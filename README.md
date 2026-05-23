@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BiteExpress Customer Web App
 
-## Getting Started
+The customer-facing web app for [BiteExpress](https://bite.express) — Nigeria's home for fast food delivery, groceries, pharmacy and more.
 
-First, run the development server:
+This is **not** the marketing site ([biteexpress-web](https://github.com/biteexpress-ng/bite.express) → bite.express). This is the authenticated shopping experience, deployed at **app.bite.express**.
+
+## Stack
+
+- **Next.js 16** (App Router) + **React 19** + **TypeScript**
+- **Tailwind CSS v4** (CSS-first `@theme` config, brand tokens mirrored from the marketing site)
+- **next-intl 4.x** (no-routing mode, English-only at launch)
+- **Zustand** for auth + cart state
+- **Bearer-token auth** in `localStorage` (compatible with the existing 6amMart Laravel backend at `dashboard.bite.express`)
+- **Paystack** inline popup for payments (loaded via `<Script>` in the root layout — `window.PaystackPop`)
+- **@react-google-maps/api** for address autocomplete + delivery-zone geometry checks
+- **Laravel Echo + pusher-js** wired to **Laravel Reverb** for real-time order tracking
+
+## Local dev
 
 ```bash
+cp .env.example .env.local
+# Fill in NEXT_PUBLIC_API_BASE_URL, Google Maps key, Paystack public key, Reverb config
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000>.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+See `.env.example`. The minimum to boot:
 
-## Learn More
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SITE_URL` | Canonical app URL (`https://app.bite.express` in prod) |
+| `NEXT_PUBLIC_API_BASE_URL` | 6amMart Laravel API base (`https://dashboard.bite.express`) |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Browser-key restricted to `*.bite.express` + `localhost` |
+| `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Paystack public key (`pk_live_…` / `pk_test_…`) |
+| `NEXT_PUBLIC_REVERB_APP_KEY` | Laravel Reverb app key |
+| `NEXT_PUBLIC_REVERB_HOST` | Reverb host (`reverb.bite.express`) |
+| `NEXT_PUBLIC_REVERB_PORT` | `443` in prod |
+| `NEXT_PUBLIC_REVERB_SCHEME` | `https` in prod |
 
-To learn more about Next.js, take a look at the following resources:
+## Architecture notes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Auth.** `src/lib/auth.ts` is the single source of truth for the token in `localStorage` (key: `biteexpress.auth`). `src/lib/auth-store.ts` (Zustand) wraps it for React. `AuthProvider` mounts cross-tab `storage` listeners + a `biteexpress:auth-expired` listener that fires on 401 responses from the API client.
+- **API.** `src/lib/api-client.ts` injects the bearer token, canonical headers (`X-software-id: 33571750`, `X-localization`, `origin`, `Accept`), and optional geo headers (`zoneId`/`moduleId`/`lat`/`lng`). Returns an `ApiResult` discriminated union (`ok` / `skipped` / `failed`).
+- **Brand.** Tokens are duplicated from `biteexpress-web/src/app/globals.css` rather than extracted into a shared package — the two apps deploy on different cadences and we want them decoupled.
+- **Routing.** Customer header is always opaque white (the marketing site goes transparent over the dark hero — that pattern is **not** ported here).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Related repos
 
-## Deploy on Vercel
+- **[biteexpress-ng/bite.express](https://github.com/biteexpress-ng/bite.express)** — public marketing site (`bite.express`)
+- **dashboard.bite.express** — Laravel admin + API backend (private)
+- **biteexpress-user-app** / **biteexpress-rider-app** — Flutter apps consuming the same API
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Status
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+V0 foundation — see the welcome page for the current feature gate.

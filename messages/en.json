@@ -1,0 +1,30 @@
+{
+  "common": {
+    "siteName": "BiteExpress",
+    "tagline": "Order food, groceries & more — delivered fast.",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "signOut": "Sign out",
+    "cart": "Cart",
+    "back": "Back",
+    "continue": "Continue",
+    "save": "Save"
+  },
+  "nav": {
+    "browse": "Browse",
+    "orders": "Orders",
+    "profile": "Profile",
+    "marketingSite": "About BiteExpress"
+  },
+  "welcome": {
+    "eyebrow": "Welcome",
+    "titleA": "Hungry?",
+    "titleEmphasised": "We've got you",
+    "titleB": "covered.",
+    "subtitle": "Order from your favourite restaurants, supermarkets, pharmacies and local stores. Live tracking, secure payments, every neighbourhood.",
+    "addressPlaceholder": "Enter your delivery address",
+    "cta": "Find food",
+    "signInHint": "Already a customer?",
+    "comingSoon": "We're rolling out features over the next few weeks. Sign up below and we'll let you know the moment ordering opens in your city."
+  }
+}
