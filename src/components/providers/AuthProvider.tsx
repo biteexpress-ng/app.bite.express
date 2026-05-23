@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth-store";
  *
  * Mount once at the top of the layout tree. Renders no markup.
  */
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider() {
   const hydrate = useAuth((s) => s.hydrate);
   const signOut = useAuth((s) => s.signOut);
 
@@ -19,7 +19,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const onExpired = () => signOut();
     const onStorage = (e: StorageEvent) => {
-      // Another tab signed in / out — re-hydrate to stay in sync.
       if (e.key === "biteexpress.auth") hydrate();
     };
 
@@ -34,5 +33,5 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [hydrate, signOut]);
 
-  return <>{children}</>;
+  return null;
 }

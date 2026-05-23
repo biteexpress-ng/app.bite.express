@@ -1,26 +1,147 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ---------------------------------------------------------------------------
+ * BiteExpress customer-app brand tokens.
+ *
+ * Mirrored from biteexpress-web/src/app/globals.css. The two apps deploy on
+ * different cadences and we intentionally keep them decoupled — when you
+ * change brand colours, copy both files.
+ * ------------------------------------------------------------------------- */
+
+@theme {
+  --color-brand-black: #000000;
+  --color-brand-red: #de1600;
+  --color-brand-red-600: #c01200;
+  --color-brand-red-700: #a30f00;
+  --color-brand-orange: #ff6b4a;
+  --color-brand-orange-600: #f04e29;
+
+  --color-ink-900: #111111;
+  --color-ink-700: #2a2a2a;
+  --color-ink-600: #6b7280;
+  --color-ink-500: #767676;
+  --color-ink-400: #9ca3af;
+  --color-ink-200: #e5e7eb;
+  --color-ink-100: #f3f4f6;
+  --color-ink-50: #fafafa;
+  --color-ink-0: #ffffff;
+
+  --color-success: #16a34a;
+  --color-warning: #f59e0b;
+  --color-error: #dc2626;
+
+  --color-background: var(--color-ink-0);
+  --color-foreground: var(--color-ink-900);
+  --color-muted: var(--color-ink-600);
+  --color-surface: var(--color-ink-50);
+  --color-border: var(--color-ink-200);
+  --color-primary: var(--color-brand-red);
+  --color-primary-foreground: var(--color-ink-0);
+  --color-accent: var(--color-brand-orange);
+  --color-on-dark: var(--color-ink-0);
+
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: var(--font-dm-serif-display), ui-serif, Georgia, "Times New Roman",
+    serif;
+
+  --text-display-2xl: 4.5rem;
+  --text-display-2xl--line-height: 1.05;
+  --text-display-2xl--letter-spacing: -0.02em;
+
+  --text-display-xl: 3.75rem;
+  --text-display-xl--line-height: 1.05;
+  --text-display-xl--letter-spacing: -0.02em;
+
+  --text-display-lg: 3rem;
+  --text-display-lg--line-height: 1.1;
+  --text-display-lg--letter-spacing: -0.02em;
+
+  --text-display-md: 2.25rem;
+  --text-display-md--line-height: 1.15;
+  --text-display-md--letter-spacing: -0.01em;
+
+  --text-display-sm: 1.875rem;
+  --text-display-sm--line-height: 1.2;
+
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+
+  --shadow-soft: 0 1px 2px rgba(17, 17, 17, 0.04), 0 4px 16px rgba(17, 17, 17, 0.06);
+  --shadow-elevated: 0 4px 12px rgba(17, 17, 17, 0.08),
+    0 12px 32px rgba(17, 17, 17, 0.08);
+  --shadow-premium: 0 24px 80px rgba(0, 0, 0, 0.28),
+    0 6px 24px rgba(222, 22, 0, 0.16);
+
+  --container-page: 80rem;
+  --container-prose: 42rem;
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+
+  ::selection {
+    background: var(--color-brand-red);
+    color: var(--color-ink-0);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-red);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Dark hero / splash backgrounds */
+.hero-radial-bg {
+  background:
+    radial-gradient(circle at 74% 22%, rgba(222, 22, 0, 0.34), transparent 34%),
+    radial-gradient(circle at 18% 78%, rgba(255, 107, 74, 0.16), transparent 32%),
+    linear-gradient(180deg, #050505 0%, #0b0605 54%, #000000 100%);
+}
+
+.glass-card {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06)),
+    rgba(0, 0, 0, 0.28);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(18px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
