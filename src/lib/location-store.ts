@@ -21,7 +21,15 @@ export type DeliveryLocation = {
   lng: number;
   /** Google Place ID, useful for re-geocoding and analytics. */
   placeId?: string;
+  /** Last result of /api/v1/config/get-zone-id for this point.
+   *  Cached so a refresh doesn't re-fire the call. */
+  zoneCheck?: ZoneCacheEntry;
 };
+
+export type ZoneCacheEntry =
+  | { status: "in-zone"; zoneIds: number[]; checkedAt: number }
+  | { status: "out-of-zone"; checkedAt: number }
+  | { status: "temp-unavailable"; checkedAt: number };
 
 const STORAGE_KEY = "biteexpress.location";
 
@@ -30,6 +38,7 @@ type LocationState = {
   hydrated: boolean;
   hydrate: () => void;
   set: (loc: DeliveryLocation) => void;
+  setZoneCheck: (entry: ZoneCacheEntry) => void;
   clear: () => void;
 };
 
@@ -66,6 +75,14 @@ export const useLocation = create<LocationState>((set, get) => ({
   set: (loc) => {
     writePersisted(loc);
     set({ location: loc, hydrated: true });
+  },
+
+  setZoneCheck: (entry) => {
+    const current = get().location;
+    if (!current) return;
+    const next: DeliveryLocation = { ...current, zoneCheck: entry };
+    writePersisted(next);
+    set({ location: next });
   },
 
   clear: () => {

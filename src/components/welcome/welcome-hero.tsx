@@ -1,23 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ArrowRight } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { AddressPicker } from "@/components/address/address-picker";
-import type { DeliveryLocation } from "@/lib/location-store";
+import { ZoneResult } from "./zone-result";
+import { useLocation, type DeliveryLocation } from "@/lib/location-store";
 
 /**
  * V0 splash hero. Dark background, serif headline, address picker.
  *
- * Once the user picks an address, we show a "Got it — we're checking
- * your area" confirmation block. The actual zone-detect call against
- * /api/v1/config/zone-list is the next slice — for now we just
- * persist the location and acknowledge it.
+ * Once the user picks an address we hand off to <ZoneResult />,
+ * which calls /api/v1/config/get-zone-id and shows one of:
+ *   - in-zone CTA  (browsing comes in the next slice)
+ *   - out-of-zone notify-me capture
+ *   - temp-unavailable notify-me capture
+ *   - soft error / skipped
+ *
+ * The picked location is also re-hydrated from localStorage on mount
+ * so a returning visitor sees their last result without re-typing.
  */
 export function WelcomeHero() {
   const t = useTranslations("welcome");
+  const stored = useLocation((s) => s.location);
+  const hydrate = useLocation((s) => s.hydrate);
   const [picked, setPicked] = useState<DeliveryLocation | null>(null);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  const active = picked ?? stored;
 
   return (
     <section className="hero-radial-bg relative isolate overflow-hidden">
@@ -41,21 +54,10 @@ export function WelcomeHero() {
         <div className="w-full max-w-xl">
           <AddressPicker variant="dark" onPick={setPicked} />
 
-          {picked ? (
-            <div className="mt-4 rounded-2xl border border-white/15 bg-white/5 px-5 py-4 text-left text-sm text-white/90 backdrop-blur">
-              <p className="font-medium">Got it — checking your area</p>
-              <p className="mt-1 text-white/65">
-                {picked.formattedAddress}
-              </p>
-              <p className="mt-3 inline-flex items-center gap-1 text-white/55">
-                Zone & store availability coming in the next release{" "}
-                <ArrowRight size={14} strokeWidth={2} />
-              </p>
-            </div>
+          {active ? (
+            <ZoneResult location={active} />
           ) : (
-            <p className="mt-3 text-xs text-white/55">
-              {t("signInHint")}
-            </p>
+            <p className="mt-3 text-xs text-white/55">{t("signInHint")}</p>
           )}
         </div>
 
