@@ -88,17 +88,14 @@ function PhaseView({ phase }: { phase: Phase }) {
   if (phase.kind === "in-zone") {
     return (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-white/80">
-          Great — we deliver here. Browsing & ordering opens in the next
-          release.
-        </p>
+        <p className="text-white/80">Great — we deliver here.</p>
         <ButtonLink
           href="/browse"
           variant="primary"
           size="sm"
           className="self-start"
         >
-          Continue
+          Start browsing
           <ArrowRight size={14} strokeWidth={2.2} />
         </ButtonLink>
       </div>
