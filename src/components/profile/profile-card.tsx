@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Phone, Mail, User2, Wallet, ArrowRight } from "lucide-react";
+import {
+  LogOut,
+  Phone,
+  Mail,
+  User2,
+  Wallet,
+  MapPin,
+  ArrowRight,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-store";
 import { fetchProfile } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
@@ -78,6 +86,26 @@ export function ProfileCard() {
             </span>
             <span className="block text-xs text-ink-500">
               See your dedicated account & balance
+            </span>
+          </span>
+        </span>
+        <ArrowRight size={16} className="text-ink-400" />
+      </Link>
+
+      <Link
+        href="/addresses"
+        className="flex items-center justify-between gap-3 rounded-3xl border border-ink-200 bg-white p-5 shadow-soft transition-shadow hover:shadow-elevated"
+      >
+        <span className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
+            <MapPin size={18} />
+          </span>
+          <span>
+            <span className="block text-base font-medium text-ink-900">
+              Saved addresses
+            </span>
+            <span className="block text-xs text-ink-500">
+              Add or edit the places you order to
             </span>
           </span>
         </span>

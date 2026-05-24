@@ -14,6 +14,15 @@ type AddressPickerProps = {
   className?: string;
   /** Called with the chosen location after the user picks a Place. */
   onPick?: (loc: DeliveryLocation) => void;
+  /** Persist picked location into useLocation store + localStorage.
+   *  True for the welcome flow (returning visitors see their last
+   *  pick), false for forms (address-book add/edit) that don't want
+   *  to overwrite the global delivery target. Default true. */
+  persistToStore?: boolean;
+  /** Initial text shown in the input. Used by the address-book edit
+   *  form to seed with the existing saved address. When set, also
+   *  suppresses the welcome-style re-hydrate-from-store behaviour. */
+  initialValue?: string;
 };
 
 /**
@@ -34,6 +43,8 @@ export function AddressPicker({
   variant = "dark",
   className,
   onPick,
+  persistToStore = true,
+  initialValue,
 }: AddressPickerProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const hasKey = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
@@ -43,18 +54,22 @@ export function AddressPicker({
 
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue ?? "");
 
   useEffect(() => {
-    hydrate();
-  }, [hydrate]);
+    if (persistToStore) hydrate();
+  }, [hydrate, persistToStore]);
 
-  // Pre-fill with the previously chosen address.
+  // Pre-fill with the previously chosen address — only on the
+  // welcome flow. The address-book form passes initialValue and
+  // doesn't want the global pick overriding it.
   useEffect(() => {
+    if (initialValue !== undefined) return;
+    if (!persistToStore) return;
     if (stored && !value) setValue(stored.formattedAddress);
     // We only want to seed once on first hydrate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stored?.formattedAddress]);
+  }, [stored?.formattedAddress, persistToStore, initialValue]);
 
   function handlePlaceChanged() {
     const ac = autocompleteRef.current;
@@ -71,7 +86,7 @@ export function AddressPicker({
     };
 
     setValue(loc.formattedAddress);
-    setLocation(loc);
+    if (persistToStore) setLocation(loc);
     onPick?.(loc);
   }
 

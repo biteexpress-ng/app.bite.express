@@ -107,6 +107,13 @@ export function SiteHeader() {
                 >
                   Wallet
                 </Link>
+                <Link
+                  href="/addresses"
+                  className="rounded-lg px-3 py-3 text-base font-medium text-ink-900 hover:bg-ink-50"
+                  onClick={() => setOpen(false)}
+                >
+                  Addresses
+                </Link>
               </>
             )}
             <a

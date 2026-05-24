@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Home, MapPin, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Home, MapPin, Loader2, Settings2 } from "lucide-react";
 import { fetchAddresses, type SavedAddress } from "@/lib/api/addresses";
 import type { DeliveryLocation } from "@/lib/location-store";
 import { cn } from "@/lib/cn";
@@ -128,8 +129,15 @@ export function AddressPickerCheckout({ picked, value, onChange }: Props) {
         </>
       )}
 
-      <p className="text-xs uppercase tracking-wider text-ink-500">
-        {saved && saved.length > 0 ? "Or use" : "This delivery"}
+      <p className="flex items-center justify-between gap-2 text-xs uppercase tracking-wider text-ink-500">
+        <span>{saved && saved.length > 0 ? "Or use" : "This delivery"}</span>
+        <Link
+          href="/addresses"
+          className="inline-flex items-center gap-1 normal-case tracking-normal text-brand-red hover:underline"
+        >
+          <Settings2 size={11} />
+          Manage saved addresses
+        </Link>
       </p>
       <label
         className={cn(
