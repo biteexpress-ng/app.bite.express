@@ -8,17 +8,16 @@ import { ZoneResult } from "./zone-result";
 import { useLocation, type DeliveryLocation } from "@/lib/location-store";
 
 /**
- * V0 splash hero. Dark background, serif headline, address picker.
- *
- * Once the user picks an address we hand off to <ZoneResult />,
+ * Welcome / splash hero. Dark background, serif headline, address
+ * picker. Once the user picks an address we hand off to <ZoneResult />,
  * which calls /api/v1/config/get-zone-id and shows one of:
- *   - in-zone CTA  (browsing comes in the next slice)
+ *   - in-zone CTA -> /browse
  *   - out-of-zone notify-me capture
  *   - temp-unavailable notify-me capture
  *   - soft error / skipped
  *
- * The picked location is also re-hydrated from localStorage on mount
- * so a returning visitor sees their last result without re-typing.
+ * Returning visitors see their last picked address rehydrated from
+ * localStorage.
  */
 export function WelcomeHero() {
   const t = useTranslations("welcome");
@@ -53,27 +52,9 @@ export function WelcomeHero() {
 
         <div className="w-full max-w-xl">
           <AddressPicker variant="dark" onPick={setPicked} />
-
-          {active ? (
-            <ZoneResult location={active} />
-          ) : (
-            <p className="mt-3 text-xs text-white/55">{t("signInHint")}</p>
-          )}
+          {active && <ZoneResult location={active} />}
         </div>
-
-        <ComingSoonPanel message={t("comingSoon")} />
       </Container>
     </section>
-  );
-}
-
-function ComingSoonPanel({ message }: { message: string }) {
-  return (
-    <div className="mt-6 w-full max-w-3xl rounded-3xl border border-white/10 bg-white/[0.04] px-6 py-5 text-sm text-white/65 backdrop-blur">
-      <p className="font-semibold uppercase tracking-[0.18em] text-white/55">
-        V0 — Foundation
-      </p>
-      <p className="mt-2 leading-relaxed">{message}</p>
-    </div>
   );
 }

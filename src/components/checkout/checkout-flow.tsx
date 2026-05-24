@@ -311,7 +311,7 @@ export function CheckoutFlow() {
 
     // Should never reach here — PaymentMethod is fully covered above.
     setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
-    toast.error("That payment method isn't wired up yet.");
+    toast.error("Please pick a payment method and try again.");
   }
 
   const placing = phase.kind === "submitting";
