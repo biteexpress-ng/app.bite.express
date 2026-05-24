@@ -7,8 +7,13 @@ import { ArrowRight, Loader2, ShoppingBag } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { useLocation } from "@/lib/location-store";
 import { useAuth } from "@/lib/auth-store";
-import { placeOrder, confirmPaystackPayment } from "@/lib/api/orders";
+import {
+  placeOrder,
+  confirmPaystackPayment,
+  walletPayOrder,
+} from "@/lib/api/orders";
 import { fetchStoreDetail } from "@/lib/api/store-detail";
+import { fetchProfile } from "@/lib/api/auth";
 import { payWithPaystack } from "@/lib/paystack";
 import { distanceKm } from "@/lib/geo";
 import { OrderSummary } from "./order-summary";
@@ -53,11 +58,22 @@ export function CheckoutFlow() {
   const token = useAuth((s) => s.token);
   const authHydrated = useAuth((s) => s.hydrated);
   const user = useAuth((s) => s.user);
+  const setUser = useAuth((s) => s.setUser);
 
   const [phase, setPhase] = useState<Phase>({ kind: "hydrating" });
   const [address, setAddress] = useState<CheckoutAddress | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("cash_on_delivery");
   const [tip, setTip] = useState(0);
+
+  // Refresh wallet_balance whenever the page mounts so the
+  // PaymentPicker shows the freshest number (the cached AuthUser
+  // can lag behind any top-up done on /wallet a moment ago).
+  useEffect(() => {
+    if (!token) return;
+    fetchProfile().then((res) => {
+      if (res.ok) setUser(res.user);
+    });
+  }, [token, setUser]);
 
   useEffect(() => {
     hydrateCart();
@@ -112,6 +128,12 @@ export function CheckoutFlow() {
 
     const dist = distanceKm(stored.lat, stored.lng, address.lat, address.lng);
 
+    // "bank_transfer" is a CLIENT-SIDE payment method that maps to
+    // the backend's `wallet` method — the customer transfers into
+    // their DVA, the webhook credits the wallet, and we deduct.
+    const backendPaymentMethod =
+      payment === "bank_transfer" ? "wallet" : payment;
+
     const res = await placeOrder({
       storeId: cartStoreId!,
       moduleId: phase.moduleId,
@@ -129,7 +151,7 @@ export function CheckoutFlow() {
           : undefined),
       contactPersonNumber: address.contactPersonNumber ?? user?.phone ?? undefined,
       contactPersonEmail: address.contactPersonEmail ?? user?.email ?? undefined,
-      paymentMethod: payment,
+      paymentMethod: backendPaymentMethod,
       orderType: "delivery",
       dmTips: tip,
     });
@@ -199,7 +221,37 @@ export function CheckoutFlow() {
       return;
     }
 
-    // wallet, offline, bank_transfer — disabled in PaymentPicker for now.
+    // Pay from wallet balance — immediate deduct.
+    if (payment === "wallet") {
+      const pay = await walletPayOrder(res.orderId);
+      if (pay.ok) {
+        clear();
+        router.replace(`/checkout/success?order_id=${res.orderId}`);
+        return;
+      }
+      setPhase({ kind: "ready", moduleId: phase.moduleId });
+      if (pay.reason === "insufficient") {
+        alert(
+          `Your wallet balance is too low. Top up via your DVA on /wallet, then come back and re-place the order.`,
+        );
+      } else {
+        alert(pay.message || "Wallet payment failed.");
+      }
+      return;
+    }
+
+    // Bank transfer via DVA — order is placed, send the customer to
+    // the transfer instructions page where they make the transfer and
+    // then click "I've sent it" to finalise.
+    if (payment === "bank_transfer") {
+      clear();
+      router.replace(
+        `/checkout/transfer/${res.orderId}?amount=${encodeURIComponent(res.amount)}`,
+      );
+      return;
+    }
+
+    // Should never reach here — PaymentMethod is fully covered above.
     setPhase({ kind: "ready", moduleId: phase.moduleId });
     alert("That payment method isn't wired up yet.");
   }
@@ -220,7 +272,12 @@ export function CheckoutFlow() {
 
         <section>
           <h2 className="mb-3 font-serif text-xl text-ink-900">How you'd like to pay</h2>
-          <PaymentPicker value={payment} onChange={setPayment} />
+          <PaymentPicker
+            value={payment}
+            onChange={setPayment}
+            walletBalance={user?.wallet_balance ?? null}
+            orderTotal={subtotal}
+          />
         </section>
 
         <section>

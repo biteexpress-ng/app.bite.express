@@ -23,6 +23,8 @@ export type AuthUser = {
   email?: string | null;
   phone?: string | null;
   image?: string | null;
+  /** Wallet balance in NGN. Comes from /customer/info. */
+  wallet_balance?: number;
 };
 
 export type AuthSnapshot = {

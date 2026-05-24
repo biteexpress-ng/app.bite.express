@@ -158,6 +158,50 @@ export type ConfirmPaystackResult =
   | { ok: true }
   | { ok: false; message: string };
 
+/**
+ * POST /api/v1/customer/order/wallet-payment
+ *
+ * Deducts the order total from the customer's wallet_balance.
+ * Used both for the immediate "Wallet balance" payment method and
+ * for the DVA bank-transfer flow (after the customer transfers and
+ * the webhook credits their wallet).
+ *
+ * Returns:
+ *   ok:true                      payment posted (or already paid)
+ *   ok:false reason:"insufficient" wallet balance below order total
+ *   ok:false reason:"not-found"  order id is wrong
+ *   ok:false reason:"other"      generic error with message
+ */
+export type WalletPayResult =
+  | { ok: true }
+  | { ok: false; reason: "insufficient" | "not-found" | "other"; message: string };
+
+export async function walletPayOrder(
+  orderId: number,
+): Promise<WalletPayResult> {
+  const res = await api<{ message?: string }>(
+    "/api/v1/customer/order/wallet-payment",
+    { method: "POST", body: { order_id: orderId } },
+  );
+  if (res.ok) return { ok: true };
+  if ("skipped" in res) {
+    return { ok: false, reason: "other", message: "Backend not configured." };
+  }
+  if (res.status === 404) {
+    return { ok: false, reason: "not-found", message: res.message };
+  }
+  // Backend uses 400 for the "insufficient_balance" path inside
+  // walletPayment(); also surfaces "insufficient" in the message text.
+  const msg = res.message ?? "";
+  if (
+    res.status === 400 &&
+    /insufficient|wallet|balance/i.test(msg)
+  ) {
+    return { ok: false, reason: "insufficient", message: msg };
+  }
+  return { ok: false, reason: "other", message: msg };
+}
+
 export async function confirmPaystackPayment(
   orderId: number,
   reference: string,
