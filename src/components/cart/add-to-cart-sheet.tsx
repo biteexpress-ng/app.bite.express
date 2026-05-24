@@ -127,6 +127,14 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
           className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-elevated sm:rounded-3xl"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Mobile grab handle — visual cue that this is a
+              bottom sheet. */}
+          <div
+            className="flex shrink-0 justify-center pt-2 sm:hidden"
+            aria-hidden="true"
+          >
+            <span className="h-1 w-10 rounded-full bg-ink-200" />
+          </div>
           <div className="relative aspect-[16/9] w-full shrink-0 bg-ink-100">
             {item.image_full_url && (
               <Image

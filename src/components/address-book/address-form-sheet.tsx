@@ -138,6 +138,12 @@ export function AddressFormSheet({ open, existing, onClose, onSaved }: Props) {
         className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-elevated sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
+        <div
+          className="flex shrink-0 justify-center pt-2 sm:hidden"
+          aria-hidden="true"
+        >
+          <span className="h-1 w-10 rounded-full bg-ink-200" />
+        </div>
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-ink-200 px-5 py-4 sm:px-6">
           <h2 className="font-serif text-xl text-ink-900">
             {existing ? "Edit address" : "Add a new address"}

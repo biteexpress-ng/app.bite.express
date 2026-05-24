@@ -64,8 +64,11 @@ export function SiteHeader() {
           )}
         </div>
 
-        {/* Mobile right cluster */}
+        {/* Mobile right cluster — notifications bell + cart + menu.
+            Bell only mounts for signed-in users (NotificationsBell
+            handles the auth check internally). */}
         <div className="-mr-2 flex items-center gap-1 md:hidden">
+          <NotificationsBell className="!border-0 hover:bg-ink-100" />
           <Link
             href="/cart"
             aria-label="Cart"

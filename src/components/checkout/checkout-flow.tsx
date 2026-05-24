@@ -317,7 +317,7 @@ export function CheckoutFlow() {
   const placing = phase.kind === "submitting";
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">
+    <div className="grid gap-8 pb-28 lg:grid-cols-[1fr_22rem] lg:pb-0">
       <div className="space-y-8">
         <section>
           <h2 className="mb-3 font-serif text-xl text-ink-900">Where to</h2>
@@ -362,11 +362,14 @@ export function CheckoutFlow() {
 
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
         <OrderSummary lines={lines} subtotal={subtotal} />
+        {/* Desktop-only Place CTA — mobile uses the sticky-bottom
+            bar below so it's always reachable without scrolling
+            past the order summary. */}
         <button
           type="button"
           onClick={handlePlace}
           disabled={placing || !address}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm hover:bg-brand-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+          className="hidden h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm hover:bg-brand-red-600 disabled:cursor-not-allowed disabled:opacity-60 lg:inline-flex"
         >
           {placing ? (
             <>
@@ -381,10 +384,49 @@ export function CheckoutFlow() {
             </>
           )}
         </button>
-        <p className="text-center text-xs text-ink-500">
+        <p className="hidden text-center text-xs text-ink-500 lg:block">
           You'll see the final total (with delivery) on the success screen.
         </p>
       </aside>
+
+      {/* Mobile sticky-bottom Place CTA. Mirrors the iOS/Android
+          pattern so the customer can hit the button from anywhere
+          on the page without scrolling to the summary. The aside
+          above adds pb-28 to the page so the bar doesn't cover
+          the last section. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-200 bg-white/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_16px_rgba(17,17,17,0.06)] backdrop-blur lg:hidden">
+        <div className="mx-auto flex max-w-md items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] uppercase tracking-wider text-ink-500">
+              Subtotal
+            </p>
+            <p className="text-base font-semibold text-ink-900">
+              ₦{Math.round(subtotal).toLocaleString()}
+              <span className="ml-1 text-xs font-normal text-ink-500">
+                + delivery
+              </span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handlePlace}
+            disabled={placing || !address}
+            className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-brand-red px-5 text-sm font-medium text-white shadow-sm hover:bg-brand-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {placing ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Placing…
+              </>
+            ) : (
+              <>
+                <ShoppingBag size={14} />
+                Place order
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

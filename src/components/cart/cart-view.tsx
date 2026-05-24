@@ -129,13 +129,14 @@ export function CartView() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="inline-flex h-9 items-center rounded-full border border-ink-200">
+              <div className="flex items-center gap-2 sm:gap-3">
+                {/* Bigger 44px hit targets on mobile for thumb reach. */}
+                <div className="inline-flex h-11 items-center rounded-full border border-ink-200 sm:h-9">
                   <button
                     type="button"
                     onClick={() => setQty(l.key, l.qty - 1)}
                     aria-label={`Decrease quantity of ${l.name}`}
-                    className="inline-flex h-9 w-9 items-center justify-center text-ink-700"
+                    className="inline-flex h-11 w-11 items-center justify-center text-ink-700 sm:h-9 sm:w-9"
                   >
                     <Minus size={14} />
                   </button>
@@ -146,7 +147,7 @@ export function CartView() {
                     type="button"
                     onClick={() => setQty(l.key, l.qty + 1)}
                     aria-label={`Increase quantity of ${l.name}`}
-                    className="inline-flex h-9 w-9 items-center justify-center text-ink-700"
+                    className="inline-flex h-11 w-11 items-center justify-center text-ink-700 sm:h-9 sm:w-9"
                   >
                     <Plus size={14} />
                   </button>
@@ -155,7 +156,7 @@ export function CartView() {
                   type="button"
                   onClick={() => remove(l.key)}
                   aria-label={`Remove ${l.name}`}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-400 hover:text-error"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full text-ink-400 hover:text-error sm:h-9 sm:w-9"
                 >
                   <Trash2 size={14} />
                 </button>
