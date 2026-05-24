@@ -112,7 +112,14 @@ export type StoreItem = {
   available_time_starts?: string | null;
   available_time_ends?: string | null;
   stock?: number;
+  maximum_cart_quantity?: number;
   veg?: 0 | 1;
+  /** Modern food module variations (groups of required/optional choices). */
+  food_variations?: unknown[];
+  /** Legacy variation shape — usually empty for new items. */
+  variations?: unknown[];
+  /** Add-on item references. */
+  add_ons?: unknown[];
 };
 
 export type StoreItemList = {

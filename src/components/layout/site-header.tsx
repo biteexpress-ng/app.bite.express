@@ -7,6 +7,7 @@ import { Logo } from "@/components/brand/logo";
 import { ButtonLink } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
 import { useIsAuthenticated } from "@/lib/auth-store";
+import { CartBadge } from "@/components/cart/cart-badge";
 import { cn } from "@/lib/cn";
 
 /**
@@ -34,10 +35,11 @@ export function SiteHeader() {
             href="/cart"
             aria-label="Cart"
             className={cn(
-              "inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink-200 text-ink-900 transition-colors hover:bg-ink-50 hover:text-brand-red",
+              "relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink-200 text-ink-900 transition-colors hover:bg-ink-50 hover:text-brand-red",
             )}
           >
             <ShoppingBag size={17} strokeWidth={1.8} />
+            <CartBadge />
           </Link>
 
           {isAuthed ? (
@@ -61,9 +63,10 @@ export function SiteHeader() {
             href="/cart"
             aria-label="Cart"
             onClick={() => setOpen(false)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-900 hover:bg-ink-100"
+            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-900 hover:bg-ink-100"
           >
             <ShoppingBag size={20} strokeWidth={1.8} />
+            <CartBadge />
           </Link>
           <button
             type="button"
