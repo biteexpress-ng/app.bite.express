@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
+import { selectionsSummary } from "@/lib/food-variations";
 
 /**
  * Cart page contents — list of lines with qty steppers + subtotal +
@@ -108,6 +109,11 @@ export function CartView() {
                 <p className="line-clamp-2 text-sm font-medium text-ink-900">
                   {l.name}
                 </p>
+                {l.selections.length > 0 && (
+                  <p className="mt-0.5 line-clamp-1 text-xs text-ink-500">
+                    {selectionsSummary(l.selections)}
+                  </p>
+                )}
                 <p className="mt-0.5 text-xs text-ink-500">
                   ₦{Math.round(l.unitPrice).toLocaleString()} each
                 </p>

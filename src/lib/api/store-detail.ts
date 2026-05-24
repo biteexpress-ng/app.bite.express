@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@/lib/api-client";
+import type { FoodVariation } from "@/lib/food-variations";
 
 /**
  * GET /api/v1/stores/details/{id}
@@ -115,7 +116,7 @@ export type StoreItem = {
   maximum_cart_quantity?: number;
   veg?: 0 | 1;
   /** Modern food module variations (groups of required/optional choices). */
-  food_variations?: unknown[];
+  food_variations?: FoodVariation[];
   /** Legacy variation shape — usually empty for new items. */
   variations?: unknown[];
   /** Add-on item references. */

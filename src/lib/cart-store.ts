@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { cartKeyFor, type VariationSelection } from "@/lib/food-variations";
 
 /**
  * Customer cart — client-only for v0.
@@ -16,21 +17,27 @@ import { create } from "zustand";
  * a conflict (caller's responsibility to show the "clear cart?"
  * dialog before retrying with `force: true`).
  *
- * Variations / food_variations / add_ons are NOT modelled yet.
- * Items added in v0 are the default config — slice 5c will add the
- * choice UI.
+ * Lines carry the chosen `selections` (food_variations) so two
+ * orders of the same item with different soup types become two
+ * separate cart lines. `unitPrice` is post-discount + uplifted by
+ * the chosen options.
+ *
+ * Add-ons are still TODO — slice-5d.
  */
 
 export type CartLine = {
-  /** Stable key — itemId on its own is enough until variations exist. */
+  /** Stable key — itemId alone for no-selection items, or
+   *  `${itemId}|${sortedSelections}` when variations are picked. */
   key: string;
   itemId: number;
   storeId: number;
   name: string;
   imageUrl?: string | null;
-  /** Final unit price after discount, in NGN. */
+  /** Final unit price (post-discount, including variation uplifts). */
   unitPrice: number;
   qty: number;
+  /** Chosen food_variations for this line. Empty array when none. */
+  selections: VariationSelection[];
 };
 
 export type AddLineInput = {
@@ -40,13 +47,15 @@ export type AddLineInput = {
   imageUrl?: string | null;
   unitPrice: number;
   qty?: number;
+  selections?: VariationSelection[];
 };
 
 export type AddResult =
   | { ok: true; merged: boolean }
   | { ok: false; reason: "store-conflict"; currentStoreId: number };
 
-const STORAGE_KEY = "biteexpress.cart";
+// Bumped from "biteexpress.cart" — old shape lacked `selections`.
+const STORAGE_KEY = "biteexpress.cart.v2";
 
 type Persisted = { storeId: number | null; lines: CartLine[] };
 
@@ -58,7 +67,9 @@ function readPersisted(): Persisted {
     const parsed = JSON.parse(raw) as Persisted;
     return {
       storeId: typeof parsed.storeId === "number" ? parsed.storeId : null,
-      lines: Array.isArray(parsed.lines) ? parsed.lines : [],
+      lines: Array.isArray(parsed.lines)
+        ? parsed.lines.map((l) => ({ ...l, selections: l.selections ?? [] }))
+        : [],
     };
   } catch {
     return { storeId: null, lines: [] };
@@ -120,7 +131,8 @@ export const useCart = create<CartState>((set, get) => ({
     }
 
     const qty = Math.max(1, input.qty ?? 1);
-    const key = String(input.itemId);
+    const selections = input.selections ?? [];
+    const key = cartKeyFor(input.itemId, selections);
 
     let nextLines: CartLine[];
     let merged = false;
@@ -147,6 +159,7 @@ export const useCart = create<CartState>((set, get) => ({
           imageUrl: input.imageUrl ?? null,
           unitPrice: input.unitPrice,
           qty,
+          selections,
         },
       ];
     }
