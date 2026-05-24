@@ -8,6 +8,10 @@ import { ButtonLink } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
 import { useIsAuthenticated } from "@/lib/auth-store";
 import { CartBadge } from "@/components/cart/cart-badge";
+import {
+  OrdersBadge,
+  OrdersInlineCount,
+} from "@/components/orders/orders-badge";
 import { cn } from "@/lib/cn";
 
 /**
@@ -46,9 +50,10 @@ export function SiteHeader() {
             <Link
               href="/profile"
               aria-label="Profile"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink-200 text-ink-900 transition-colors hover:bg-ink-50 hover:text-brand-red"
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink-200 text-ink-900 transition-colors hover:bg-ink-50 hover:text-brand-red"
             >
               <User2 size={17} strokeWidth={1.8} />
+              <OrdersBadge />
             </Link>
           ) : (
             <ButtonLink href="/signin" variant="primary" size="sm">
@@ -95,10 +100,11 @@ export function SiteHeader() {
               <>
                 <Link
                   href="/orders"
-                  className="rounded-lg px-3 py-3 text-base font-medium text-ink-900 hover:bg-ink-50"
+                  className="flex items-center rounded-lg px-3 py-3 text-base font-medium text-ink-900 hover:bg-ink-50"
                   onClick={() => setOpen(false)}
                 >
                   Orders
+                  <OrdersInlineCount />
                 </Link>
                 <Link
                   href="/wallet"
