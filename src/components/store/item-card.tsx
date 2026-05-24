@@ -31,7 +31,11 @@ export function ItemCard({ item }: { item: StoreItem }) {
   const hasDiscount = finalPrice !== price;
 
   const rating = typeof item.avg_rating === "number" ? item.avg_rating : null;
-  const inStock = item.stock === undefined || item.stock > 0;
+  // Don't lock the button on stock === 0. Food module items default
+  // to stock=0 because stock tracking is off (config('module.food.stock')
+  // is false on the backend). The order-place endpoint enforces
+  // real out-of-stock only for modules where stock matters.
+  const inStock = true;
 
   return (
     <>

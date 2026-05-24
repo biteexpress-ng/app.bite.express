@@ -70,7 +70,9 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
   const uplift = selectionsUplift(variations, selections);
   const unit = basePrice + uplift;
   const lineTotal = Math.round(unit * qty);
-  const inStock = item.stock === undefined || item.stock > 0;
+  // See item-card.tsx — stock=0 is the default for food module items;
+  // we let the backend's order-place endpoint enforce real stock.
+  const inStock = true;
   const maxQty =
     typeof item.stock === "number" && item.stock > 0
       ? Math.min(item.stock, item.maximum_cart_quantity ?? 99)

@@ -27,6 +27,10 @@ type ItemsByCategory = Record<
   { loading: boolean; error?: string; items: StoreItem[] }
 >;
 
+/** Synthetic category id for the "All" tab. Real categories from
+ *  the backend always have id > 0, so 0 is safe as a sentinel. */
+const ALL_TAB_ID = 0;
+
 /**
  * Drives the /store/[id] page.
  *
@@ -63,11 +67,12 @@ export function StoreDetailView({ storeId }: { storeId: number }) {
         });
         return;
       }
-      const firstCat = res.store.category_details?.[0]?.id ?? 0;
+      // Always default to the synthetic "All" tab (id ALL_TAB_ID) so the
+      // customer sees the full menu first, not just one category.
       setPage({
         kind: "ready",
         store: res.store,
-        selectedCategoryId: firstCat,
+        selectedCategoryId: ALL_TAB_ID,
       });
     });
   }, [hydrated, storeId, stored?.lat, stored?.lng]);
@@ -76,7 +81,6 @@ export function StoreDetailView({ storeId }: { storeId: number }) {
   useEffect(() => {
     if (page.kind !== "ready") return;
     const cat = page.selectedCategoryId;
-    if (!cat) return;
     if (items[cat]) return; // cached
 
     const zc = stored?.zoneCheck;
@@ -85,6 +89,47 @@ export function StoreDetailView({ storeId }: { storeId: number }) {
     if (!moduleId) return;
 
     setItems((prev) => ({ ...prev, [cat]: { loading: true, items: [] } }));
+
+    // "All" tab: fan out to every real category in parallel + merge,
+    // de-duplicating items that appear in multiple categories.
+    if (cat === ALL_TAB_ID) {
+      const realCategories = page.store.category_details ?? [];
+      if (realCategories.length === 0) {
+        setItems((prev) => ({
+          ...prev,
+          [cat]: { loading: false, items: [] },
+        }));
+        return;
+      }
+      Promise.all(
+        realCategories.map((c) =>
+          fetchStoreCategoryItems({
+            storeId: page.store.id,
+            categoryId: c.id,
+            zoneIds: zc.zoneIds,
+            moduleId,
+            limit: 50,
+            offset: 1,
+          }),
+        ),
+      ).then((results) => {
+        const seen = new Set<number>();
+        const merged: StoreItem[] = [];
+        for (const r of results) {
+          if (!r.ok) continue;
+          for (const it of r.data.products) {
+            if (seen.has(it.id)) continue;
+            seen.add(it.id);
+            merged.push(it);
+          }
+        }
+        setItems((prev) => ({
+          ...prev,
+          [cat]: { loading: false, items: merged },
+        }));
+      });
+      return;
+    }
 
     fetchStoreCategoryItems({
       storeId: page.store.id,
@@ -186,9 +231,14 @@ function CategoryTabs({
   selected: number;
   onSelect: (id: number) => void;
 }) {
+  // Synthetic "All" tab first, then the store's real categories.
+  const tabs: Array<{ id: number; name: string }> = [
+    { id: ALL_TAB_ID, name: "All" },
+    ...categories.map((c) => ({ id: c.id, name: c.name })),
+  ];
   return (
     <div className="-mx-1 mb-6 flex gap-2 overflow-x-auto px-1 pb-1">
-      {categories.map((c) => {
+      {tabs.map((c) => {
         const isActive = c.id === selected;
         return (
           <button
