@@ -25,11 +25,17 @@ export type OrderSummary = {
     contact_person_name?: string;
     contact_person_number?: string;
     address?: string;
+    /** Backend casts these to strings before JSON-encoding
+     *  (PlaceNewOrder.php line 152). Parse with Number() at use. */
+    latitude?: string;
+    longitude?: string;
   } | null;
   store?: {
     id?: number;
     name?: string;
     logo_full_url?: string | null;
+    latitude?: number | string;
+    longitude?: number | string;
   } | null;
   delivery_man?:
     | Array<{

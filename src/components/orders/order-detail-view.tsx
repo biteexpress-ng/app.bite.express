@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/orders";
 import { subscribeOrderStatus } from "@/lib/order-channel";
 import { OrderStatusPill } from "./order-status-pill";
+import { RiderMap } from "./rider-map";
 import { cn } from "@/lib/cn";
 
 type LoadState =
@@ -175,6 +176,24 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   const { order, lines } = state;
   const rider = order.delivery_man?.[0] ?? null;
 
+  // Live rider map shows only while the order is in-flight AND we
+  // have an assigned rider AND a usable delivery lat/lng. The
+  // pickup pin is dropped only when the store has coordinates.
+  const showMap =
+    rider !== null &&
+    (order.order_status === "handover" ||
+      order.order_status === "picked_up" ||
+      order.order_status === "accepted") &&
+    parseLatLng(
+      order.delivery_address?.latitude,
+      order.delivery_address?.longitude,
+    ) !== null;
+  const destination = parseLatLng(
+    order.delivery_address?.latitude,
+    order.delivery_address?.longitude,
+  );
+  const pickup = parseLatLng(order.store?.latitude, order.store?.longitude);
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
       <div className="space-y-6">
@@ -202,6 +221,14 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
         </header>
 
         <Timeline status={order.order_status} />
+
+        {showMap && rider && destination && (
+          <RiderMap
+            deliverymanId={rider.id}
+            destination={destination}
+            pickup={pickup}
+          />
+        )}
 
         <ItemsCard lines={lines} />
       </div>
@@ -454,4 +481,15 @@ function safeParse(raw: string | undefined): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function parseLatLng(
+  lat: string | number | undefined,
+  lng: string | number | undefined,
+): { lat: number; lng: number } | null {
+  const nLat = lat === undefined ? NaN : Number(lat);
+  const nLng = lng === undefined ? NaN : Number(lng);
+  if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return null;
+  if (nLat === 0 && nLng === 0) return null;
+  return { lat: nLat, lng: nLng };
 }

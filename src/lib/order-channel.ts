@@ -49,3 +49,49 @@ export function subscribeOrderStatus(
     }
   };
 }
+
+/* ----------------------------------------------------------------- */
+/* Live rider GPS                                                     */
+/* ----------------------------------------------------------------- */
+
+/**
+ * DeliveryLocationUpdated (app/Events/DeliveryLocationUpdated.php):
+ *   - Public channel: `dm_location_{deliverymanId}`
+ *   - Event name:     `dm_location_{deliverymanId}` (no namespace prefix)
+ *   - Payload:        { deliveryman_id, latitude, longitude, location }
+ *
+ * Rider apps broadcast on a 5-30s cadence while a delivery is in
+ * flight, so the first marker drop can take a moment after the
+ * customer opens the tracking page.
+ */
+export type RiderLocationEvent = {
+  deliveryman_id: number;
+  latitude: number | string;
+  longitude: number | string;
+  location?: string | null;
+};
+
+export function subscribeRiderLocation(
+  deliverymanId: number,
+  handler: (event: RiderLocationEvent) => void,
+): () => void {
+  const echo = getEcho();
+  if (!echo) return () => {};
+
+  const channelName = `dm_location_${deliverymanId}`;
+  // broadcastAs() returns the same string as the channel, so the
+  // Pusher-style event identifier we listen for is `.{name}`.
+  const eventName = `.${channelName}`;
+
+  const channel = echo.channel(channelName);
+  channel.listen(eventName, handler);
+
+  return () => {
+    try {
+      channel.stopListening(eventName);
+      echo.leave(channelName);
+    } catch {
+      /* ignore */
+    }
+  };
+}
