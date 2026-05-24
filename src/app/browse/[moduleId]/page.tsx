@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { StoreList } from "@/components/browse/store-list";
+import { StoreSearch } from "@/components/browse/store-search";
 
 export const metadata: Metadata = {
   title: "Browse",
@@ -44,7 +45,7 @@ export default async function ModuleStoreListPage({ params }: Props) {
           <ArrowLeft size={14} /> All categories
         </Link>
 
-        <header className="mb-8">
+        <header className="mb-6">
           <h1 className="font-serif text-display-md text-ink-900">
             Shops near you
           </h1>
@@ -52,6 +53,8 @@ export default async function ModuleStoreListPage({ params }: Props) {
             Sorted by distance from your delivery address.
           </p>
         </header>
+
+        <StoreSearch moduleId={id} className="mb-6" />
 
         <StoreList moduleId={id} />
       </Container>
