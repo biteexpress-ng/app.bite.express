@@ -99,8 +99,17 @@ function normalize(
   // Skip rows that are entirely empty after merging.
   if (!title && !description) return null;
 
-  const imageUrl =
-    (raw as RawBroadcast).image_full_url ?? data.image ?? null;
+  // Broadcast rows expose a resolved full URL via image_full_url.
+  // Personal rows put just the storage FILENAME in data.image
+  // (different subfolders depending on source — referral / order /
+  // etc — and we don't have a reliable client-side convention to
+  // construct the storage path). Anything that isn't already an
+  // absolute URL or root-relative path gets dropped so the card
+  // falls back to the bell icon instead of crashing next/image.
+  const imageUrl = pickUsableImage(
+    (raw as RawBroadcast).image_full_url,
+    data.image,
+  );
   const orderRaw = data.order_id;
   const orderId =
     typeof orderRaw === "number"
@@ -128,4 +137,19 @@ function safeJson(raw: string): NotificationData | null {
   } catch {
     return null;
   }
+}
+
+/** Returns the first usable image URL or null. Accepts absolute
+ *  URLs (http://, https://, data:) or root-relative paths (/foo).
+ *  Bare filenames like "abc.png" are rejected because next/image
+ *  can't resolve them. */
+function pickUsableImage(
+  ...candidates: Array<string | null | undefined>
+): string | null {
+  for (const c of candidates) {
+    if (!c) continue;
+    if (/^(https?:|data:)/i.test(c)) return c;
+    if (c.startsWith("/")) return c;
+  }
+  return null;
 }
