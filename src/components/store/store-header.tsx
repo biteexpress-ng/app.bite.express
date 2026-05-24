@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Star, Clock, MapPin, Truck, BadgeAlert } from "lucide-react";
 import type { StoreDetail } from "@/lib/api/store-detail";
+import { HeartButton } from "@/components/wishlist/heart-button";
 import { cn } from "@/lib/cn";
 
 /**
@@ -49,16 +50,24 @@ export function StoreHeader({ store }: { store: StoreDetail }) {
         </div>
       </div>
 
-      <div className="mt-4 px-1">
-        <h1 className="font-serif text-2xl text-ink-900 sm:text-3xl">
-          {store.name}
-        </h1>
-        {store.address && (
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-600">
-            <MapPin size={13} className="shrink-0" />
-            <span className="truncate">{store.address}</span>
-          </p>
-        )}
+      <div className="mt-4 flex items-start gap-3 px-1">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-serif text-2xl text-ink-900 sm:text-3xl">
+            {store.name}
+          </h1>
+          {store.address && (
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-600">
+              <MapPin size={13} className="shrink-0" />
+              <span className="truncate">{store.address}</span>
+            </p>
+          )}
+        </div>
+        <HeartButton
+          kind="store"
+          id={store.id}
+          label={store.name}
+          size="md"
+        />
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink-700">

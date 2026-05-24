@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Plus, Star } from "lucide-react";
 import type { StoreItem } from "@/lib/api/store-detail";
 import { AddToCartSheet } from "@/components/cart/add-to-cart-sheet";
+import { HeartButton } from "@/components/wishlist/heart-button";
 import { cn } from "@/lib/cn";
 
 /**
@@ -49,6 +50,12 @@ export function ItemCard({ item }: { item: StoreItem }) {
           {img && (
             <Image src={img} alt="" fill sizes="96px" className="object-cover" />
           )}
+          <HeartButton
+            kind="item"
+            id={item.id}
+            label={item.name}
+            className="!h-7 !w-7 absolute right-1 top-1 !shadow"
+          />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">

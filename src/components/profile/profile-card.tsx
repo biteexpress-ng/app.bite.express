@@ -14,9 +14,11 @@ import {
   ArrowRight,
   Pencil,
   Lock,
+  Heart,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-store";
 import { fetchProfile } from "@/lib/api/auth";
+import { useWishlist } from "@/lib/wishlist-store";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -33,6 +35,7 @@ export function ProfileCard() {
   const cachedUser = useAuth((s) => s.user);
   const setUser = useAuth((s) => s.setUser);
   const signOut = useAuth((s) => s.signOut);
+  const resetWishlist = useWishlist((s) => s.reset);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -133,6 +136,26 @@ export function ProfileCard() {
       </Link>
 
       <Link
+        href="/wishlist"
+        className="flex items-center justify-between gap-3 rounded-3xl border border-ink-200 bg-white p-5 shadow-soft transition-shadow hover:shadow-elevated"
+      >
+        <span className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
+            <Heart size={18} />
+          </span>
+          <span>
+            <span className="block text-base font-medium text-ink-900">
+              Wishlist
+            </span>
+            <span className="block text-xs text-ink-500">
+              Favourited shops & items
+            </span>
+          </span>
+        </span>
+        <ArrowRight size={16} className="text-ink-400" />
+      </Link>
+
+      <Link
         href="/profile/password"
         className="flex items-center justify-between gap-3 rounded-3xl border border-ink-200 bg-white p-5 shadow-soft transition-shadow hover:shadow-elevated"
       >
@@ -156,6 +179,10 @@ export function ProfileCard() {
         variant="outline"
         size="md"
         onClick={() => {
+          // Clear the per-user wishlist cache so the next signed-in
+          // user doesn't briefly see the previous customer's hearts
+          // flashed in before their own list hydrates.
+          resetWishlist();
           signOut();
           router.replace("/");
         }}

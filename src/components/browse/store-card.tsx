@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Star, Clock, BadgePercent, Truck } from "lucide-react";
 import type { Store } from "@/lib/api/stores";
+import { HeartButton } from "@/components/wishlist/heart-button";
 import { cn } from "@/lib/cn";
 
 /**
@@ -56,6 +57,12 @@ export function StoreCard({ store }: { store: Store }) {
             Closed
           </span>
         )}
+        <HeartButton
+          kind="store"
+          id={store.id}
+          label={store.name}
+          className="absolute bottom-3 right-3"
+        />
       </div>
 
       <div className="flex flex-1 items-start gap-3 p-4">
