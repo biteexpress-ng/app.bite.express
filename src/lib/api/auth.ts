@@ -310,6 +310,108 @@ export async function fetchProfile(): Promise<ProfileFetchResult> {
 }
 
 /* -------------------------------------------------------------- */
+/* Profile editing                                                 */
+/* -------------------------------------------------------------- */
+
+/**
+ * POST /api/v1/customer/update-profile
+ *
+ * Backend (CustomerController@update_profile) has a two-phase
+ * pattern: changing the phone or email triggers an OTP send first,
+ * then a second call with the OTP completes the change. Avatar
+ * upload (multipart) and password change live in this same endpoint
+ * but are out of scope for v0 of the edit screen.
+ *
+ * Two-phase shape:
+ *
+ *   POST {name, email, phone}
+ *   ----------------------------------------------------------------
+ *   On clean update (no verification needed):
+ *     200  { message: "Profile successfully updated" }
+ *
+ *   On verification required:
+ *     200  { verification_on: "phone" | "email",
+ *            verification_medium: "SMS" | "email" | "firebase",
+ *            otp_send: true,
+ *            message: ... }
+ *
+ *   POST {name, email, phone, otp, verification_on, verification_medium}
+ *   ----------------------------------------------------------------
+ *   On success:
+ *     200  { message: "..." }
+ *
+ *   On bad OTP:
+ *     4xx  { verification_on, verification_medium, message }
+ */
+
+export type UpdateProfileInput = {
+  name: string;
+  email: string;
+  phone: string;
+  /** Only present on the second call when an OTP was requested. */
+  otp?: string;
+  /** Mirrors the discriminator the backend returned on phase 1. */
+  verificationOn?: "phone" | "email";
+  verificationMedium?: "SMS" | "email" | "firebase";
+};
+
+export type UpdateProfileResult =
+  | { ok: true; kind: "done"; message: string }
+  | {
+      ok: true;
+      kind: "needs-otp";
+      target: "phone" | "email";
+      medium: "SMS" | "email" | "firebase";
+      message: string;
+    }
+  | { ok: false; message: string; fieldErrors?: Record<string, string[]> };
+
+type UpdateProfileResponse = {
+  message?: string;
+  verification_on?: "phone" | "email";
+  verification_medium?: "SMS" | "email" | "firebase";
+  otp_send?: boolean;
+};
+
+export async function updateProfile(
+  input: UpdateProfileInput,
+): Promise<UpdateProfileResult> {
+  const body: Record<string, unknown> = {
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+  };
+  if (input.otp) body.otp = input.otp;
+  if (input.verificationOn) body.verification_on = input.verificationOn;
+  if (input.verificationMedium)
+    body.verification_medium = input.verificationMedium;
+
+  const res = await api<UpdateProfileResponse>(
+    "/api/v1/customer/update-profile",
+    { method: "POST", body },
+  );
+
+  if (res.ok) {
+    if (res.data.verification_on && res.data.otp_send) {
+      return {
+        ok: true,
+        kind: "needs-otp",
+        target: res.data.verification_on,
+        medium: res.data.verification_medium ?? "SMS",
+        message: res.data.message ?? "We've sent you a code.",
+      };
+    }
+    return {
+      ok: true,
+      kind: "done",
+      message: res.data.message ?? "Profile updated.",
+    };
+  }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message, fieldErrors: res.errors };
+}
+
+/* -------------------------------------------------------------- */
 /* Sign-up                                                         */
 /* -------------------------------------------------------------- */
 

@@ -11,6 +11,7 @@ import {
   Wallet,
   MapPin,
   ArrowRight,
+  Pencil,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-store";
 import { fetchProfile } from "@/lib/api/auth";
@@ -64,6 +65,13 @@ export function ProfileCard() {
               {refreshing ? "Refreshing…" : "Signed in"}
             </p>
           </div>
+          <Link
+            href="/profile/edit"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 px-3 text-xs font-medium text-ink-700 hover:bg-ink-50"
+          >
+            <Pencil size={12} />
+            Edit
+          </Link>
         </div>
 
         <dl className="mt-6 divide-y divide-ink-200/70 border-t border-ink-200/70 text-sm">
