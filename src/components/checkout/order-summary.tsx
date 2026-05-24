@@ -42,6 +42,14 @@ export function OrderSummary({ lines, subtotal }: Props) {
                   {selectionsSummary(l.selections)}
                 </p>
               )}
+              {l.addOns.length > 0 && (
+                <p className="line-clamp-1 text-xs text-ink-500">
+                  +{" "}
+                  {l.addOns
+                    .map((a) => (a.qty > 1 ? `${a.qty} × ${a.name}` : a.name))
+                    .join(", ")}
+                </p>
+              )}
             </div>
             <span className="shrink-0 text-sm font-medium text-ink-900">
               ₦{Math.round(l.unitPrice * l.qty).toLocaleString()}

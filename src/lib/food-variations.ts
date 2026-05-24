@@ -113,29 +113,53 @@ export function validateSelections(
 }
 
 /**
- * Stable cart key for an item + its chosen selections.
+ * Stable cart key for an item + its chosen selections + add-ons.
  *
- * Same item with same selections → same key (qty merges).
- * Same item with different selections → different keys (separate lines).
+ * Same item with same selections + same add-ons → same key (qty merges).
+ * Different selections or different add-ons → different keys (separate lines).
  *
- * Format: `${itemId}` (no selections) or `${itemId}|name=v1,v2;name2=v3`
- * with names + values sorted for determinism.
+ * Format: `${itemId}` (nothing extra) or
+ *         `${itemId}|name=v1,v2;name2=v3` (selections) or
+ *         `${itemId}|name=v|+aid:qty,aid:qty` (selections + add-ons) or
+ *         `${itemId}|+aid:qty` (add-ons only).
+ *
+ * Names + values + add-on ids are all sorted for determinism so
+ * picking the same options in a different order still merges.
  */
 export function cartKeyFor(
   itemId: number,
   selections: VariationSelection[],
+  addOns?: ReadonlyArray<{ id: number; qty: number }>,
 ): string {
-  if (selections.length === 0) return String(itemId);
-  const parts: string[] = [];
+  const groupParts: string[] = [];
   const sortedGroups = [...selections]
     .filter((s) => s.values.length > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
-  if (sortedGroups.length === 0) return String(itemId);
   for (const g of sortedGroups) {
     const vs = [...g.values].sort().join(",");
-    parts.push(`${g.name}=${vs}`);
+    groupParts.push(`${g.name}=${vs}`);
   }
-  return `${itemId}|${parts.join(";")}`;
+
+  const addOnParts: string[] = [];
+  if (addOns && addOns.length > 0) {
+    const sortedAddOns = [...addOns]
+      .filter((a) => a.qty > 0)
+      .sort((a, b) => a.id - b.id);
+    for (const a of sortedAddOns) {
+      addOnParts.push(`${a.id}:${a.qty}`);
+    }
+  }
+
+  if (groupParts.length === 0 && addOnParts.length === 0) {
+    return String(itemId);
+  }
+  const right = [
+    groupParts.join(";"),
+    addOnParts.length > 0 ? `+${addOnParts.join(",")}` : "",
+  ]
+    .filter(Boolean)
+    .join("|");
+  return `${itemId}|${right}`;
 }
 
 /** Compact summary of selections for the cart line — single line of text. */

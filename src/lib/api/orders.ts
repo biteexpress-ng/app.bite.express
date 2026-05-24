@@ -258,8 +258,8 @@ export async function placeOrder(
     item_type: "App\\Models\\Item",
     quantity: l.qty,
     variation: toWireVariation(l.selections),
-    add_on_ids: [] as number[],
-    add_on_qtys: [] as number[],
+    add_on_ids: l.addOns.map((a) => a.id),
+    add_on_qtys: l.addOns.map((a) => a.qty),
   }));
 
   const body: Record<string, unknown> = {

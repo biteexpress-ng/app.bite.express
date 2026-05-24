@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { cartKeyFor, type VariationSelection } from "@/lib/food-variations";
+import type { AddOnSelection } from "@/lib/api/store-detail";
 
 /**
  * Customer cart — client-only for v0.
@@ -26,18 +27,24 @@ import { cartKeyFor, type VariationSelection } from "@/lib/food-variations";
  */
 
 export type CartLine = {
-  /** Stable key — itemId alone for no-selection items, or
-   *  `${itemId}|${sortedSelections}` when variations are picked. */
+  /** Stable key — `${itemId}` alone for plain adds, or
+   *  `${itemId}|${sortedSelections}|+aid:qty,aid:qty` when
+   *  variations and/or add-ons are picked. */
   key: string;
   itemId: number;
   storeId: number;
   name: string;
   imageUrl?: string | null;
-  /** Final unit price (post-discount, including variation uplifts). */
+  /** Final unit price (post-discount, including variation uplifts AND
+   *  the sum of selected add-ons * their qtys). */
   unitPrice: number;
   qty: number;
   /** Chosen food_variations for this line. Empty array when none. */
   selections: VariationSelection[];
+  /** Chosen add-ons for this line, with their qty (default 1 each).
+   *  Empty array when the item has no add-ons or the customer
+   *  didn't add any. */
+  addOns: AddOnSelection[];
 };
 
 export type AddLineInput = {
@@ -48,14 +55,19 @@ export type AddLineInput = {
   unitPrice: number;
   qty?: number;
   selections?: VariationSelection[];
+  addOns?: AddOnSelection[];
 };
 
 export type AddResult =
   | { ok: true; merged: boolean }
   | { ok: false; reason: "store-conflict"; currentStoreId: number };
 
-// Bumped from "biteexpress.cart" — old shape lacked `selections`.
-const STORAGE_KEY = "biteexpress.cart.v2";
+// v3 bump — line shape gained `addOns`. v2 carts won't have the
+// field; readPersisted() defaults it to [] for safety, but bumping
+// the key wipes any in-flight v2 cart so unitPrice numbers can't
+// silently drift if a v2 line had an add-on baked into its price
+// outside the new field.
+const STORAGE_KEY = "biteexpress.cart.v3";
 
 type Persisted = { storeId: number | null; lines: CartLine[] };
 
@@ -68,7 +80,11 @@ function readPersisted(): Persisted {
     return {
       storeId: typeof parsed.storeId === "number" ? parsed.storeId : null,
       lines: Array.isArray(parsed.lines)
-        ? parsed.lines.map((l) => ({ ...l, selections: l.selections ?? [] }))
+        ? parsed.lines.map((l) => ({
+            ...l,
+            selections: l.selections ?? [],
+            addOns: l.addOns ?? [],
+          }))
         : [],
     };
   } catch {
@@ -132,7 +148,12 @@ export const useCart = create<CartState>((set, get) => ({
 
     const qty = Math.max(1, input.qty ?? 1);
     const selections = input.selections ?? [];
-    const key = cartKeyFor(input.itemId, selections);
+    const addOns = input.addOns ?? [];
+    const key = cartKeyFor(
+      input.itemId,
+      selections,
+      addOns.map((a) => ({ id: a.id, qty: a.qty })),
+    );
 
     let nextLines: CartLine[];
     let merged = false;
@@ -160,6 +181,7 @@ export const useCart = create<CartState>((set, get) => ({
           unitPrice: input.unitPrice,
           qty,
           selections,
+          addOns,
         },
       ];
     }

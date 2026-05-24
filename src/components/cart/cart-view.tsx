@@ -114,6 +114,16 @@ export function CartView() {
                     {selectionsSummary(l.selections)}
                   </p>
                 )}
+                {l.addOns.length > 0 && (
+                  <p className="mt-0.5 line-clamp-1 text-xs text-ink-500">
+                    +{" "}
+                    {l.addOns
+                      .map((a) =>
+                        a.qty > 1 ? `${a.qty} × ${a.name}` : a.name,
+                      )
+                      .join(", ")}
+                  </p>
+                )}
                 <p className="mt-0.5 text-xs text-ink-500">
                   ₦{Math.round(l.unitPrice).toLocaleString()} each
                 </p>

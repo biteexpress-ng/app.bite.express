@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Minus, Plus, X, ShoppingBag, Loader2 } from "lucide-react";
-import type { StoreItem } from "@/lib/api/store-detail";
+import type { AddOnSelection, StoreItem } from "@/lib/api/store-detail";
 import { useCart } from "@/lib/cart-store";
 import {
   selectionsUplift,
@@ -11,6 +11,7 @@ import {
   type VariationSelection,
 } from "@/lib/food-variations";
 import { VariationPicker } from "./variation-picker";
+import { AddonPicker } from "./addon-picker";
 import { CartConflictDialog } from "./cart-conflict-dialog";
 import { cn } from "@/lib/cn";
 
@@ -39,6 +40,7 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
   const add = useCart((s) => s.add);
   const [qty, setQty] = useState(1);
   const [selections, setSelections] = useState<VariationSelection[]>([]);
+  const [addOns, setAddOns] = useState<AddOnSelection[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
@@ -47,6 +49,7 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
     if (open) {
       setQty(1);
       setSelections([]);
+      setAddOns([]);
       setSubmitting(false);
       setConflict(false);
       setShowErrors(false);
@@ -68,7 +71,8 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
         : Math.max(0, price - (price * discount) / 100)
       : price;
   const uplift = selectionsUplift(variations, selections);
-  const unit = basePrice + uplift;
+  const addOnUplift = addOns.reduce((sum, a) => sum + a.price * a.qty, 0);
+  const unit = basePrice + uplift + addOnUplift;
   const lineTotal = Math.round(unit * qty);
   // See item-card.tsx — stock=0 is the default for food module items;
   // we let the backend's order-place endpoint enforce real stock.
@@ -78,7 +82,7 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
       ? Math.min(item.stock, item.maximum_cart_quantity ?? 99)
       : (item.maximum_cart_quantity ?? 99);
 
-  const hasAddons = Boolean(item.add_ons?.length);
+  const availableAddOns = item.add_ons ?? [];
   const canAdd = inStock && errors.length === 0;
 
   function handleAdd(force = false) {
@@ -97,6 +101,7 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
         unitPrice: unit,
         qty,
         selections,
+        addOns,
       },
       { force },
     );
@@ -172,11 +177,14 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
               </div>
             )}
 
-            {hasAddons && (
-              <p className="mt-5 rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 text-xs text-ink-600">
-                Add-ons come in the next release — adding this item without
-                extras for now.
-              </p>
+            {availableAddOns.length > 0 && (
+              <div className="mt-5">
+                <AddonPicker
+                  addOns={availableAddOns}
+                  selected={addOns}
+                  onChange={setAddOns}
+                />
+              </div>
             )}
 
             {!inStock && (

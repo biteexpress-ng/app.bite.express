@@ -3,6 +3,25 @@
 import { api } from "@/lib/api-client";
 import type { FoodVariation } from "@/lib/food-variations";
 
+/** Single optional add-on row (e.g. "Extra cheese — ₦200").
+ *  Mirrors App\Models\AddOn fields after Helpers::addon_data_formatting. */
+export type AddOn = {
+  id: number;
+  name: string;
+  price: number;
+  store_id?: number;
+  addon_category_id?: number | null;
+  status?: 0 | 1;
+};
+
+/** What the customer picked for one cart line's add-ons. */
+export type AddOnSelection = {
+  id: number;
+  name: string;
+  price: number;
+  qty: number;
+};
+
 /**
  * GET /api/v1/stores/details/{id}
  *
@@ -119,8 +138,9 @@ export type StoreItem = {
   food_variations?: FoodVariation[];
   /** Legacy variation shape — usually empty for new items. */
   variations?: unknown[];
-  /** Add-on item references. */
-  add_ons?: unknown[];
+  /** Optional add-ons attached to this item, with full AddOn rows
+   *  after Helpers::addon_data_formatting on the backend. */
+  add_ons?: AddOn[];
 };
 
 export type StoreItemList = {
