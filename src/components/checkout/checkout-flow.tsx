@@ -14,6 +14,7 @@ import {
 } from "@/lib/api/orders";
 import { fetchStoreDetail } from "@/lib/api/store-detail";
 import { fetchProfile } from "@/lib/api/auth";
+import { checkZone } from "@/lib/api/zones";
 import { payWithPaystack } from "@/lib/paystack";
 import { distanceKm } from "@/lib/geo";
 import { toast } from "@/lib/toast";
@@ -26,7 +27,7 @@ import {
 
 type Phase =
   | { kind: "hydrating" }
-  | { kind: "ready"; moduleId: number }
+  | { kind: "ready"; moduleId: number; storeZoneId: number | null }
   | { kind: "submitting" }
   | { kind: "error"; message: string };
 
@@ -87,7 +88,7 @@ export function CheckoutFlow() {
   useEffect(() => {
     if (!cartHydrated || !locHydrated || !authHydrated) return;
     if (!cartStoreId) {
-      setPhase({ kind: "ready", moduleId: 0 });
+      setPhase({ kind: "ready", moduleId: 0, storeZoneId: null });
       return;
     }
 
@@ -98,7 +99,11 @@ export function CheckoutFlow() {
       stored?.lng,
     ).then((res) => {
       if (res.ok) {
-        setPhase({ kind: "ready", moduleId: res.store.module_id ?? 0 });
+        setPhase({
+          kind: "ready",
+          moduleId: res.store.module_id ?? 0,
+          storeZoneId: res.store.zone_id ?? null,
+        });
       } else {
         setPhase({ kind: "error", message: res.message });
       }
@@ -127,6 +132,55 @@ export function CheckoutFlow() {
     if (phase.kind !== "ready") return;
     setPhase({ kind: "submitting" });
 
+    // Preflight zone check on the actual delivery address — guards
+    // against the case where the customer picked a saved address
+    // (or any address other than the welcome-flow location) that's
+    // outside the store's zone polygon. The backend's
+    // getZoneAndStore would otherwise return $zone=null and crash
+    // (see PlaceNewOrder.php:135). We surface a friendly error and
+    // bail before the request goes out.
+    const addressZoneCheck = await checkZone(address.lat, address.lng);
+    if (addressZoneCheck.kind === "out-of-zone") {
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      toast.error(
+        "We don't deliver to that address yet. Pick another and try again.",
+      );
+      return;
+    }
+    if (addressZoneCheck.kind === "temp-unavailable") {
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      toast.warn("Delivery is paused in that area right now.");
+      return;
+    }
+    if (addressZoneCheck.kind === "error") {
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      toast.error(addressZoneCheck.message);
+      return;
+    }
+    // "skipped" passes through silently — likely a dev env without
+    // NEXT_PUBLIC_API_BASE_URL set; the order POST will fail later
+    // with its own message.
+    const eligibleZoneIds =
+      addressZoneCheck.kind === "in-zone"
+        ? addressZoneCheck.zoneIds
+        : stored.zoneCheck.zoneIds;
+
+    // Block when the store the cart belongs to ISN'T in the
+    // delivery address's covered zones. This was the actual root
+    // cause of the 500 — customer picked a saved address in zone 5
+    // but the cart store is in zone 1, so the store-zone polygon
+    // never contains the new lat/lng and $zone comes back null.
+    if (
+      phase.storeZoneId !== null &&
+      !eligibleZoneIds.includes(phase.storeZoneId)
+    ) {
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      toast.error(
+        "This shop doesn't deliver to the chosen address. Pick another address or browse shops near it.",
+      );
+      return;
+    }
+
     const dist = distanceKm(stored.lat, stored.lng, address.lat, address.lng);
 
     // "bank_transfer" is a CLIENT-SIDE payment method that maps to
@@ -138,7 +192,7 @@ export function CheckoutFlow() {
     const res = await placeOrder({
       storeId: cartStoreId!,
       moduleId: phase.moduleId,
-      zoneIds: stored.zoneCheck.zoneIds,
+      zoneIds: eligibleZoneIds,
       lines,
       lat: address.lat,
       lng: address.lng,
@@ -158,7 +212,7 @@ export function CheckoutFlow() {
     });
 
     if (!res.ok) {
-      setPhase({ kind: "ready", moduleId: phase.moduleId });
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
       toast.error(res.message);
       return;
     }
@@ -175,7 +229,7 @@ export function CheckoutFlow() {
       const customerEmail =
         address.contactPersonEmail ?? user?.email ?? null;
       if (!customerEmail) {
-        setPhase({ kind: "ready", moduleId: phase.moduleId });
+        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
         toast.warn(
           "We need an email on file to charge a card. Add one on the Edit profile page and try again.",
         );
@@ -196,14 +250,14 @@ export function CheckoutFlow() {
       });
 
       if (pop.status === "cancelled") {
-        setPhase({ kind: "ready", moduleId: phase.moduleId });
+        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
         toast.warn(
           `Payment cancelled. Order #${res.orderId} is on hold — re-place it when you're ready.`,
         );
         return;
       }
       if (pop.status === "error") {
-        setPhase({ kind: "ready", moduleId: phase.moduleId });
+        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
         toast.error(pop.message);
         return;
       }
@@ -213,7 +267,7 @@ export function CheckoutFlow() {
         pop.reference,
       );
       if (!confirmRes.ok) {
-        setPhase({ kind: "ready", moduleId: phase.moduleId });
+        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
         toast.error(
           `Paystack charged your card but we couldn't confirm server-side: ${confirmRes.message}. Ops has been notified.`,
         );
@@ -233,7 +287,7 @@ export function CheckoutFlow() {
         router.replace(`/checkout/success?order_id=${res.orderId}`);
         return;
       }
-      setPhase({ kind: "ready", moduleId: phase.moduleId });
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
       if (pay.reason === "insufficient") {
         toast.warn(
           "Wallet balance is too low. Top up via your DVA on the Wallet page, then re-place the order.",
@@ -256,7 +310,7 @@ export function CheckoutFlow() {
     }
 
     // Should never reach here — PaymentMethod is fully covered above.
-    setPhase({ kind: "ready", moduleId: phase.moduleId });
+    setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
     toast.error("That payment method isn't wired up yet.");
   }
 
