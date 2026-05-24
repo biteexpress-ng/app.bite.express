@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { changePassword, manualLogin } from "@/lib/api/auth";
 import { useAuth } from "@/lib/auth-store";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 
 type Phase = "edit" | "submitting" | "verifying-current";
@@ -89,6 +90,7 @@ export function ChangePasswordForm() {
       setTopError(res.message);
       return;
     }
+    toast.success("Password updated.");
     router.replace("/profile");
   }
 

@@ -16,6 +16,7 @@ import { fetchStoreDetail } from "@/lib/api/store-detail";
 import { fetchProfile } from "@/lib/api/auth";
 import { payWithPaystack } from "@/lib/paystack";
 import { distanceKm } from "@/lib/geo";
+import { toast } from "@/lib/toast";
 import { OrderSummary } from "./order-summary";
 import { PaymentPicker, type PaymentMethod } from "./payment-picker";
 import {
@@ -158,7 +159,7 @@ export function CheckoutFlow() {
 
     if (!res.ok) {
       setPhase({ kind: "ready", moduleId: phase.moduleId });
-      alert(res.message); // crude but adequate for v0 — replace with toast next pass
+      toast.error(res.message);
       return;
     }
 
@@ -175,8 +176,8 @@ export function CheckoutFlow() {
         address.contactPersonEmail ?? user?.email ?? null;
       if (!customerEmail) {
         setPhase({ kind: "ready", moduleId: phase.moduleId });
-        alert(
-          "We need an email on file to charge a card. Add one in /profile then try again.",
+        toast.warn(
+          "We need an email on file to charge a card. Add one on the Edit profile page and try again.",
         );
         return;
       }
@@ -196,22 +197,25 @@ export function CheckoutFlow() {
 
       if (pop.status === "cancelled") {
         setPhase({ kind: "ready", moduleId: phase.moduleId });
-        alert(
-          `Payment cancelled. Your order #${res.orderId} is on hold — you can retry by re-placing it.`,
+        toast.warn(
+          `Payment cancelled. Order #${res.orderId} is on hold — re-place it when you're ready.`,
         );
         return;
       }
       if (pop.status === "error") {
         setPhase({ kind: "ready", moduleId: phase.moduleId });
-        alert(pop.message);
+        toast.error(pop.message);
         return;
       }
 
-      const confirm = await confirmPaystackPayment(res.orderId, pop.reference);
-      if (!confirm.ok) {
+      const confirmRes = await confirmPaystackPayment(
+        res.orderId,
+        pop.reference,
+      );
+      if (!confirmRes.ok) {
         setPhase({ kind: "ready", moduleId: phase.moduleId });
-        alert(
-          `Paystack charged your card, but we couldn't confirm it server-side: ${confirm.message}. Ops has been notified.`,
+        toast.error(
+          `Paystack charged your card but we couldn't confirm server-side: ${confirmRes.message}. Ops has been notified.`,
         );
         return;
       }
@@ -231,11 +235,11 @@ export function CheckoutFlow() {
       }
       setPhase({ kind: "ready", moduleId: phase.moduleId });
       if (pay.reason === "insufficient") {
-        alert(
-          `Your wallet balance is too low. Top up via your DVA on /wallet, then come back and re-place the order.`,
+        toast.warn(
+          "Wallet balance is too low. Top up via your DVA on the Wallet page, then re-place the order.",
         );
       } else {
-        alert(pay.message || "Wallet payment failed.");
+        toast.error(pay.message || "Wallet payment failed.");
       }
       return;
     }
@@ -253,7 +257,7 @@ export function CheckoutFlow() {
 
     // Should never reach here — PaymentMethod is fully covered above.
     setPhase({ kind: "ready", moduleId: phase.moduleId });
-    alert("That payment method isn't wired up yet.");
+    toast.error("That payment method isn't wired up yet.");
   }
 
   const placing = phase.kind === "submitting";

@@ -140,8 +140,27 @@
   backdrop-filter: blur(18px);
 }
 
+/* Toast mount animation — applied via .toast-enter on each item. */
+@keyframes biteexpress-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-enter {
+  animation: biteexpress-toast-in 180ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+  .toast-enter {
+    animation: none;
   }
 }

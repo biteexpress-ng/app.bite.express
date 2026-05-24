@@ -7,6 +7,7 @@ import { siteConfig } from "@/lib/site-config";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
+import { Toaster } from "@/components/ui/toaster";
 import { PAYSTACK_SCRIPT_SRC } from "@/lib/paystack";
 import "./globals.css";
 
@@ -52,6 +53,7 @@ export default async function RootLayout({
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <SiteFooter />
+          <Toaster />
         </NextIntlClientProvider>
 
         <Script src={PAYSTACK_SCRIPT_SRC} strategy="afterInteractive" />

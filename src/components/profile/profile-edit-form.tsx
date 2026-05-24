@@ -10,6 +10,7 @@ import {
 } from "@/lib/api/auth";
 import { useAuth } from "@/lib/auth-store";
 import { normalizePhone } from "@/lib/phone";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 
 type Step =
@@ -120,6 +121,7 @@ export function ProfileEditForm() {
 
     // Done!
     await refreshProfile();
+    toast.success("Profile updated.");
     router.replace("/profile");
   }
 

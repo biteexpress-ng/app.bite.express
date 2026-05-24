@@ -8,6 +8,8 @@ import {
   type SavedAddress,
 } from "@/lib/api/addresses";
 import { AddressFormSheet } from "./address-form-sheet";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 
 type State =
@@ -27,6 +29,7 @@ export function AddressBook() {
   const [editing, setEditing] = useState<SavedAddress | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   async function refresh() {
     setState({ kind: "loading" });
@@ -42,15 +45,16 @@ export function AddressBook() {
     refresh();
   }, []);
 
-  async function handleDelete(id: number) {
-    if (!confirm("Remove this address?")) return;
+  async function performDelete(id: number) {
+    setConfirmDeleteId(null);
     setDeleting(id);
     const res = await deleteAddress(id);
     setDeleting(null);
     if (!res.ok) {
-      alert(res.message);
+      toast.error(res.message);
       return;
     }
+    toast.success("Address removed.");
     refresh();
   }
 
@@ -92,7 +96,7 @@ export function AddressBook() {
                 address={a}
                 deleting={deleting === a.id}
                 onEdit={() => setEditing(a)}
-                onDelete={() => handleDelete(a.id)}
+                onDelete={() => setConfirmDeleteId(a.id)}
               />
             </li>
           ))}
@@ -110,6 +114,21 @@ export function AddressBook() {
           setEditing(null);
           setCreating(false);
           refresh();
+          toast.success("Address saved.");
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Remove this address?"
+        body="You'll need to add it again from scratch if you change your mind."
+        confirmLabel="Remove"
+        cancelLabel="Keep it"
+        tone="danger"
+        busy={deleting === confirmDeleteId}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={() => {
+          if (confirmDeleteId !== null) performDelete(confirmDeleteId);
         }}
       />
     </>
