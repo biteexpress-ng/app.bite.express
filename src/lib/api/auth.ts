@@ -41,9 +41,25 @@ type LoginResponse = {
   is_phone_verified: 0 | 1;
   is_email_verified: 0 | 1;
   is_personal_info: 0 | 1;
-  is_exist_user: number | null;
+  /** When non-null the backend is saying "we already have an
+   *  account for this phone — confirm it's the same person before
+   *  we hand over a token." Shape comes from
+   *  CustomerAuthController@exist_user. */
+  is_exist_user: ExistingUserRaw | null;
   login_type: "otp" | "social" | "manual";
   email: string | null;
+};
+
+type ExistingUserRaw = {
+  id: number;
+  name: string;
+  image?: string | null;
+};
+
+export type ExistingUser = {
+  id: number;
+  name: string;
+  imageUrl: string | null;
 };
 
 type CheckPhoneResponse = {
@@ -75,8 +91,9 @@ export type OtpRequestResult =
   | { ok: false; message: string; code?: string };
 
 export type OtpVerifyResult =
-  | { ok: true; needsProfile: true; phone: string }
-  | { ok: true; needsProfile: false; token: string }
+  | { ok: true; kind: "signed-in"; token: string }
+  | { ok: true; kind: "needs-profile"; phone: string }
+  | { ok: true; kind: "confirm-existing"; existing: ExistingUser; phone: string }
   | { ok: false; message: string; code?: string };
 
 export type ProfileCompleteResult =
@@ -174,7 +191,21 @@ export async function requestLoginOtp(phone: string): Promise<OtpRequestResult> 
   return { ok: false, ...backendError(res) };
 }
 
-/** Phone + OTP -> token. Hits /auth/verify-phone (NOT /auth/login). */
+/** Phone + OTP -> outcome. Hits /auth/verify-phone (NOT /auth/login).
+ *
+ *  Three possible "ok" outcomes:
+ *    - signed-in        token in hand, we're done.
+ *    - confirm-existing backend found an unverified-but-existing
+ *                       account on this phone. Caller must show a
+ *                       confirmation step ("is this you?") then call
+ *                       confirmExistingUser() with the same OTP.
+ *    - needs-profile    no user on file; backend created a blank
+ *                       shell. Caller must collect name + email
+ *                       and POST /auth/update-info.
+ *
+ *  Note: the confirm-existing branch does NOT delete the
+ *  phone_verifications row, so the OTP is still valid for the
+ *  follow-up /auth/login call. */
 export async function verifyLoginOtp(
   phone: string,
   otp: string,
@@ -193,11 +224,55 @@ export async function verifyLoginOtp(
     if ("skipped" in res) return { ok: false, message: "Backend not configured." };
     return { ok: false, ...backendError(res) };
   }
-  const { token, is_personal_info } = res.data;
+  const { token, is_personal_info, is_exist_user } = res.data;
+
   if (token && is_personal_info === 1) {
-    return { ok: true, needsProfile: false, token };
+    return { ok: true, kind: "signed-in", token };
   }
-  return { ok: true, needsProfile: true, phone };
+  if (is_exist_user && typeof is_exist_user === "object") {
+    return {
+      ok: true,
+      kind: "confirm-existing",
+      phone,
+      existing: {
+        id: is_exist_user.id,
+        name: is_exist_user.name,
+        imageUrl: is_exist_user.image ?? null,
+      },
+    };
+  }
+  return { ok: true, kind: "needs-profile", phone };
+}
+
+/** "Yes it's me" follow-up after verifyLoginOtp returns
+ *  kind:"confirm-existing". POST /auth/login with verified:"yes"
+ *  (the literal string — DO NOT use boolean true; that loose-equals
+ *  "no" in PHP and triggers the destructive branch). Uses the same
+ *  OTP from the verify step, which is still in phone_verifications. */
+export async function confirmExistingUser(
+  phone: string,
+  otp: string,
+): Promise<ManualLoginResult> {
+  const res = await api<LoginResponse>("/api/v1/auth/login", {
+    method: "POST",
+    body: {
+      login_type: "otp",
+      phone,
+      otp,
+      verified: "yes",
+    },
+    unauth: true,
+  });
+  if (!res.ok) {
+    if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+    return { ok: false, ...backendError(res) };
+  }
+  if (res.data.token) return { ok: true, token: res.data.token };
+  return {
+    ok: false,
+    message:
+      "Couldn't issue a session token after confirmation. Try signing in again.",
+  };
 }
 
 /* -------------------------------------------------------------- */

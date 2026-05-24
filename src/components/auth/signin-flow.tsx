@@ -9,8 +9,11 @@ import {
   manualLogin,
   requestLoginOtp,
   verifyLoginOtp,
+  confirmExistingUser,
   completeProfile,
   fetchProfile,
+  type ExistingUser,
+  type OtpVerifyResult,
 } from "@/lib/api/auth";
 import { useAuth } from "@/lib/auth-store";
 import { normalizePhone } from "@/lib/phone";
@@ -28,6 +31,7 @@ type Step =
       phone: string;
     }
   | { kind: "otp"; phone: string }
+  | { kind: "confirm-existing"; phone: string; otp: string; existing: ExistingUser }
   | { kind: "profile"; phone: string };
 
 /**
@@ -101,13 +105,34 @@ export function SignInFlow() {
         <OtpStep
           phone={step.phone}
           onBack={() => setStep({ kind: "phone" })}
-          onVerified={async (result) => {
-            if (result.needsProfile) {
-              setStep({ kind: "profile", phone: step.phone });
-            } else {
+          onVerified={async (result, enteredOtp) => {
+            if (result.kind === "signed-in") {
               await finishWithToken(result.token, step.phone);
+            } else if (result.kind === "confirm-existing") {
+              setStep({
+                kind: "confirm-existing",
+                phone: step.phone,
+                otp: enteredOtp,
+                existing: result.existing,
+              });
+            } else {
+              setStep({ kind: "profile", phone: step.phone });
             }
           }}
+        />
+      )}
+
+      {step.kind === "confirm-existing" && (
+        <ConfirmExistingStep
+          phone={step.phone}
+          existing={step.existing}
+          onConfirm={async () => {
+            const res = await confirmExistingUser(step.phone, step.otp);
+            return res.ok
+              ? finishWithToken(res.token, step.phone)
+              : Promise.reject(res.message);
+          }}
+          onReject={() => setStep({ kind: "phone" })}
         />
       )}
 
@@ -276,9 +301,8 @@ function OtpStep({
   phone: string;
   onBack: () => void;
   onVerified: (
-    result:
-      | { needsProfile: true }
-      | { needsProfile: false; token: string },
+    result: Extract<OtpVerifyResult, { ok: true }>,
+    enteredOtp: string,
   ) => void | Promise<void>;
 }) {
   const [otp, setOtp] = useState("");
@@ -313,11 +337,7 @@ function OtpStep({
       setError(res.message);
       return;
     }
-    if (res.needsProfile) {
-      await onVerified({ needsProfile: true });
-    } else {
-      await onVerified({ needsProfile: false, token: res.token });
-    }
+    await onVerified(res, otp);
   }
 
   async function handleResend() {
@@ -372,6 +392,102 @@ function OtpStep({
         )}
       </p>
     </form>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+/* Confirm existing user — "Is this you?"                               */
+/* -------------------------------------------------------------------- */
+
+function ConfirmExistingStep({
+  phone,
+  existing,
+  onConfirm,
+  onReject,
+}: {
+  phone: string;
+  existing: ExistingUser;
+  onConfirm: () => Promise<void>;
+  onReject: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleYes() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onConfirm();
+    } catch (msg) {
+      setError(typeof msg === "string" ? msg : "Couldn't sign you in.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5 text-center">
+      <h2 className="font-serif text-xl text-ink-900">Is this you?</h2>
+      <p className="text-sm text-ink-600">
+        We already have an account on <span className="font-medium text-ink-900">{phone}</span>.
+      </p>
+
+      <div className="mx-auto flex max-w-xs items-center gap-3 rounded-2xl border border-ink-200 bg-ink-50 p-4 text-left">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-200 text-ink-700">
+          {existing.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={existing.imageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span className="text-base font-medium">
+              {existing.name.trim().charAt(0).toUpperCase() || "?"}
+            </span>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-ink-900">
+            {existing.name.trim() || "(no name on file)"}
+          </p>
+          <p className="text-xs text-ink-500">Existing customer</p>
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-error">{error}</p>}
+
+      <button
+        type="button"
+        onClick={handleYes}
+        disabled={submitting}
+        className={cn(
+          "inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm transition-colors",
+          "hover:bg-brand-red-600 active:bg-brand-red-700",
+          "disabled:cursor-wait disabled:opacity-70",
+        )}
+      >
+        {submitting ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            Signing you in…
+          </>
+        ) : (
+          <>
+            Yes, that's me — sign me in
+            <ArrowRight size={16} strokeWidth={2.2} />
+          </>
+        )}
+      </button>
+
+      <button
+        type="button"
+        onClick={onReject}
+        disabled={submitting}
+        className="text-sm text-ink-600 underline-offset-2 hover:underline disabled:opacity-60"
+      >
+        That's not me — use a different number
+      </button>
+    </div>
   );
 }
 
