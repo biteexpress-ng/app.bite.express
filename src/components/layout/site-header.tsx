@@ -12,6 +12,7 @@ import {
   OrdersBadge,
   OrdersInlineCount,
 } from "@/components/orders/orders-badge";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { cn } from "@/lib/cn";
 
 /**
@@ -35,6 +36,7 @@ export function SiteHeader() {
 
         {/* Desktop right cluster */}
         <div className="hidden items-center gap-3 md:flex">
+          <NotificationsBell />
           <Link
             href="/cart"
             aria-label="Cart"
@@ -105,6 +107,13 @@ export function SiteHeader() {
                 >
                   Orders
                   <OrdersInlineCount />
+                </Link>
+                <Link
+                  href="/notifications"
+                  className="rounded-lg px-3 py-3 text-base font-medium text-ink-900 hover:bg-ink-50"
+                  onClick={() => setOpen(false)}
+                >
+                  Notifications
                 </Link>
                 <Link
                   href="/wallet"
