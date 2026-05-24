@@ -119,12 +119,25 @@ export async function api<T>(
       try {
         const errBody = (await res.json()) as {
           message?: string;
-          errors?: Record<string, string[]> | Array<{ message?: string }>;
+          errors?:
+            | Record<string, string[]>
+            | Array<{ code?: string; message?: string }>;
         };
         if (errBody.message) message = errBody.message;
         if (Array.isArray(errBody.errors)) {
+          // Laravel Helpers::error_processor returns [{code, message}].
+          // Promote into both the top-level `message` AND a Record
+          // so field-level UIs can highlight the offending input.
           const first = errBody.errors[0]?.message;
           if (first) message = first;
+          const map: Record<string, string[]> = {};
+          for (const e of errBody.errors) {
+            if (e.code && e.message) {
+              if (!map[e.code]) map[e.code] = [];
+              map[e.code].push(e.message);
+            }
+          }
+          if (Object.keys(map).length > 0) errors = map;
         } else if (errBody.errors) {
           errors = errBody.errors;
         }

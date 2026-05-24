@@ -6,34 +6,34 @@ import type { AuthUser } from "@/lib/auth";
 /**
  * Typed wrappers for the customer auth endpoints on dashboard.bite.express.
  *
- * OTP flow (the only login method in v0):
+ * Sign-in flow (web-app convention):
  *
- *   1. requestLoginOtp(phone)
- *        POST /auth/login {login_type:"otp", phone}
- *        Backend's send_otp() path — issues a phone_verifications row
- *        and sends an SMS. No `verified` field.
+ *   1. checkPhone(phone)
+ *        POST /auth/check-phone
+ *        Returns { exists, hasPassword, isPhoneVerified } so the UI
+ *        can decide whether to show the password field, the OTP
+ *        fallback, or the "not on BiteExpress, sign up" prompt.
  *
- *   2. verifyLoginOtp(phone, otp)
- *        POST /auth/verify-phone {phone, otp, login_type:"otp", verification_type:"phone"}
- *        This is a DIFFERENT endpoint from /auth/login.
+ *   2a. manualLogin(phone, password)
+ *         POST /auth/login {login_type:"manual", field_type:"phone", …}
+ *         Returns the token on success.
  *
- *        Returning customer (is_phone_verified=1, has f_name)
- *          → {token, is_personal_info: 1} — signed in.
+ *   2b. requestLoginOtp(phone) + verifyLoginOtp(phone, otp)
+ *         Fallback when the user has forgotten the password.
  *
- *        Brand-new customer (no user row yet)
- *          → backend creates a blank User with is_phone_verified=1
- *            → {token: null, is_personal_info: 0} — client must
- *               call completeProfile().
+ *   completeProfile({name, phone, email})
+ *         POST /auth/update-info — covers the rare "phone has an
+ *         account but no f_name yet" edge case.
  *
- *   3. completeProfile({name, phone, email})
- *        POST /auth/update-info — only for brand-new users.
+ *   register({...})
+ *         POST /auth/sign-up — creates the user + returns a token
+ *         in one shot, no OTP step.
  *
- * DO NOT post {login_type:"otp", verified: …} to /auth/login. That
- * goes through otp_login() (CustomerAuthController.php line 848+)
- * which compares `verified == 'no'` via PHP loose equality —
- * `true == 'no'` is TRUE in PHP, so JSON `true` triggers the
- * destructive "nullify existing user's phone + create a fresh
- * blank user" branch. Use /auth/verify-phone instead.
+ * Don't post {login_type:"otp", verified:…} to /auth/login. PHP loose
+ * equality (`true == "no"` is TRUE) triggers a destructive branch in
+ * the backend's otp_login() that nullifies the existing user's
+ * phone column and creates a blank twin. Use /auth/verify-phone for
+ * OTP checks.
  */
 
 type LoginResponse = {
@@ -45,6 +45,30 @@ type LoginResponse = {
   login_type: "otp" | "social" | "manual";
   email: string | null;
 };
+
+type CheckPhoneResponse = {
+  exists: boolean;
+  has_password: boolean;
+  is_phone_verified: 0 | 1;
+};
+
+type RegisterResponse = {
+  token?: string | null;
+  message?: string;
+};
+
+export type CheckPhoneResult =
+  | {
+      ok: true;
+      exists: boolean;
+      hasPassword: boolean;
+      isPhoneVerified: boolean;
+    }
+  | { ok: false; message: string };
+
+export type ManualLoginResult =
+  | { ok: true; token: string }
+  | { ok: false; message: string; code?: string };
 
 export type OtpRequestResult =
   | { ok: true }
@@ -63,16 +87,82 @@ export type ProfileFetchResult =
   | { ok: true; user: AuthUser }
   | { ok: false; message: string };
 
-function backendError(
-  res: { message: string; errors?: Record<string, string[]> },
-): { message: string; code?: string } {
-  // CustomerAuthController returns { errors: [{ code, message }] } shapes.
-  // api-client already collapses that into a top-level `message` when the
-  // array contains one entry — we just surface it.
+export type RegisterInput = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  password: string;
+  refCode?: string;
+};
+
+export type RegisterResult =
+  | { ok: true; token: string }
+  | { ok: false; message: string; fieldErrors?: Record<string, string[]> };
+
+function backendError(res: {
+  message: string;
+  errors?: Record<string, string[]>;
+}): { message: string; code?: string } {
   return { message: res.message };
 }
 
-/** Step 1 — phone number → SMS OTP. */
+/* -------------------------------------------------------------- */
+/* Phone existence + manual login                                 */
+/* -------------------------------------------------------------- */
+
+/** Look up whether a phone is on file and whether the account has
+ *  a real password set (vs the OTP-only placeholder bcrypt(phone)). */
+export async function checkPhone(phone: string): Promise<CheckPhoneResult> {
+  const res = await api<CheckPhoneResponse>("/api/v1/auth/check-phone", {
+    method: "POST",
+    body: { phone },
+    unauth: true,
+  });
+  if (res.ok) {
+    return {
+      ok: true,
+      exists: !!res.data.exists,
+      hasPassword: !!res.data.has_password,
+      isPhoneVerified: res.data.is_phone_verified === 1,
+    };
+  }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message };
+}
+
+/** Manual phone+password login. Returns a token on success. */
+export async function manualLogin(
+  phone: string,
+  password: string,
+): Promise<ManualLoginResult> {
+  const res = await api<LoginResponse>("/api/v1/auth/login", {
+    method: "POST",
+    body: {
+      login_type: "manual",
+      field_type: "phone",
+      email_or_phone: phone,
+      password,
+    },
+    unauth: true,
+  });
+  if (res.ok) {
+    if (res.data.token) return { ok: true, token: res.data.token };
+    return {
+      ok: false,
+      message:
+        "We couldn't issue a session token — please use the OTP option instead.",
+    };
+  }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, ...backendError(res) };
+}
+
+/* -------------------------------------------------------------- */
+/* OTP fallback                                                   */
+/* -------------------------------------------------------------- */
+
+/** Phone -> SMS OTP. Send before showing the OTP entry step. */
 export async function requestLoginOtp(phone: string): Promise<OtpRequestResult> {
   const res = await api<LoginResponse>("/api/v1/auth/login", {
     method: "POST",
@@ -80,17 +170,11 @@ export async function requestLoginOtp(phone: string): Promise<OtpRequestResult> 
     unauth: true,
   });
   if (res.ok) return { ok: true };
-  if ("skipped" in res) {
-    return { ok: false, message: "Backend not configured yet." };
-  }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
   return { ok: false, ...backendError(res) };
 }
 
-/** Step 2 — phone + OTP → token (or "needs profile completion" hint).
- *
- *  Posts to /auth/verify-phone (NOT /auth/login). See the file-top
- *  comment for why — /auth/login with verified:true silently
- *  destroys the existing user's phone column. */
+/** Phone + OTP -> token. Hits /auth/verify-phone (NOT /auth/login). */
 export async function verifyLoginOtp(
   phone: string,
   otp: string,
@@ -106,22 +190,20 @@ export async function verifyLoginOtp(
     unauth: true,
   });
   if (!res.ok) {
-    if ("skipped" in res) {
-      return { ok: false, message: "Backend not configured yet." };
-    }
+    if ("skipped" in res) return { ok: false, message: "Backend not configured." };
     return { ok: false, ...backendError(res) };
   }
-
   const { token, is_personal_info } = res.data;
   if (token && is_personal_info === 1) {
     return { ok: true, needsProfile: false, token };
   }
-  // is_personal_info === 0 means brand-new user — backend created a
-  // blank User row; client must fill name + email next.
   return { ok: true, needsProfile: true, phone };
 }
 
-/** Step 3 (new users only) — full name + email → token. */
+/* -------------------------------------------------------------- */
+/* Profile completion (edge case) + Profile fetch                 */
+/* -------------------------------------------------------------- */
+
 export async function completeProfile(input: {
   name: string;
   phone: string;
@@ -133,9 +215,7 @@ export async function completeProfile(input: {
     unauth: true,
   });
   if (!res.ok) {
-    if ("skipped" in res) {
-      return { ok: false, message: "Backend not configured yet." };
-    }
+    if ("skipped" in res) return { ok: false, message: "Backend not configured." };
     return { ok: false, message: res.message };
   }
   if (!res.data.token) {
@@ -147,12 +227,46 @@ export async function completeProfile(input: {
   return { ok: true, token: res.data.token };
 }
 
-/** Fetch the signed-in customer profile. Requires bearer token. */
 export async function fetchProfile(): Promise<ProfileFetchResult> {
   const res = await api<AuthUser>("/api/v1/customer/info");
   if (res.ok) return { ok: true, user: res.data };
-  if ("skipped" in res) {
-    return { ok: false, message: "Backend not configured yet." };
-  }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
   return { ok: false, message: res.message };
+}
+
+/* -------------------------------------------------------------- */
+/* Sign-up                                                         */
+/* -------------------------------------------------------------- */
+
+/** POST /auth/sign-up. Returns a session token directly on success. */
+export async function register(input: RegisterInput): Promise<RegisterResult> {
+  const body: Record<string, unknown> = {
+    f_name: input.firstName,
+    l_name: input.lastName,
+    email: input.email,
+    phone: input.phone,
+    password: input.password,
+  };
+  if (input.refCode) body.ref_code = input.refCode;
+
+  const res = await api<RegisterResponse>("/api/v1/auth/sign-up", {
+    method: "POST",
+    body,
+    unauth: true,
+  });
+  if (res.ok) {
+    if (res.data.token) return { ok: true, token: res.data.token };
+    return {
+      ok: false,
+      message:
+        res.data.message ??
+        "Account created but no session token was issued. Try signing in.",
+    };
+  }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return {
+    ok: false,
+    message: res.message,
+    fieldErrors: res.errors,
+  };
 }
