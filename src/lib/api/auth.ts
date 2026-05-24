@@ -6,17 +6,34 @@ import type { AuthUser } from "@/lib/auth";
 /**
  * Typed wrappers for the customer auth endpoints on dashboard.bite.express.
  *
- * The Laravel CustomerAuthController is one endpoint (`POST /auth/login`)
- * that branches on `login_type`. For the customer web app we only use
- * OTP login (phone + 6-digit code) — manual password and social signin
- * are skipped for v0.
+ * OTP flow (the only login method in v0):
  *
- * Flow:
- *   1. requestLoginOtp(phone)            → SMS OTP sent
- *   2. verifyLoginOtp(phone, otp)        → returns {token, isPersonalInfo}
- *      - if isPersonalInfo == 1 → token is non-null, signed-in
- *      - if isPersonalInfo == 0 → token is null, brand-new user, go to step 3
- *   3. completeProfile({name, email})    → returns token, signed-in
+ *   1. requestLoginOtp(phone)
+ *        POST /auth/login {login_type:"otp", phone}
+ *        Backend's send_otp() path — issues a phone_verifications row
+ *        and sends an SMS. No `verified` field.
+ *
+ *   2. verifyLoginOtp(phone, otp)
+ *        POST /auth/verify-phone {phone, otp, login_type:"otp", verification_type:"phone"}
+ *        This is a DIFFERENT endpoint from /auth/login.
+ *
+ *        Returning customer (is_phone_verified=1, has f_name)
+ *          → {token, is_personal_info: 1} — signed in.
+ *
+ *        Brand-new customer (no user row yet)
+ *          → backend creates a blank User with is_phone_verified=1
+ *            → {token: null, is_personal_info: 0} — client must
+ *               call completeProfile().
+ *
+ *   3. completeProfile({name, phone, email})
+ *        POST /auth/update-info — only for brand-new users.
+ *
+ * DO NOT post {login_type:"otp", verified: …} to /auth/login. That
+ * goes through otp_login() (CustomerAuthController.php line 848+)
+ * which compares `verified == 'no'` via PHP loose equality —
+ * `true == 'no'` is TRUE in PHP, so JSON `true` triggers the
+ * destructive "nullify existing user's phone + create a fresh
+ * blank user" branch. Use /auth/verify-phone instead.
  */
 
 type LoginResponse = {
@@ -69,14 +86,23 @@ export async function requestLoginOtp(phone: string): Promise<OtpRequestResult> 
   return { ok: false, ...backendError(res) };
 }
 
-/** Step 2 — phone + OTP → token (or "needs profile completion" hint). */
+/** Step 2 — phone + OTP → token (or "needs profile completion" hint).
+ *
+ *  Posts to /auth/verify-phone (NOT /auth/login). See the file-top
+ *  comment for why — /auth/login with verified:true silently
+ *  destroys the existing user's phone column. */
 export async function verifyLoginOtp(
   phone: string,
   otp: string,
 ): Promise<OtpVerifyResult> {
-  const res = await api<LoginResponse>("/api/v1/auth/login", {
+  const res = await api<LoginResponse>("/api/v1/auth/verify-phone", {
     method: "POST",
-    body: { login_type: "otp", phone, otp, verified: true },
+    body: {
+      phone,
+      otp,
+      login_type: "otp",
+      verification_type: "phone",
+    },
     unauth: true,
   });
   if (!res.ok) {
@@ -90,8 +116,8 @@ export async function verifyLoginOtp(
   if (token && is_personal_info === 1) {
     return { ok: true, needsProfile: false, token };
   }
-  // is_personal_info === 0 means brand-new user — token is null until
-  // the profile is filled in.
+  // is_personal_info === 0 means brand-new user — backend created a
+  // blank User row; client must fill name + email next.
   return { ok: true, needsProfile: true, phone };
 }
 
