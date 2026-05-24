@@ -92,13 +92,22 @@ export function SiteHeader() {
               Browse
             </Link>
             {isAuthed && (
-              <Link
-                href="/orders"
-                className="rounded-lg px-3 py-3 text-base font-medium text-ink-900 hover:bg-ink-50"
-                onClick={() => setOpen(false)}
-              >
-                Orders
-              </Link>
+              <>
+                <Link
+                  href="/orders"
+                  className="rounded-lg px-3 py-3 text-base font-medium text-ink-900 hover:bg-ink-50"
+                  onClick={() => setOpen(false)}
+                >
+                  Orders
+                </Link>
+                <Link
+                  href="/wallet"
+                  className="rounded-lg px-3 py-3 text-base font-medium text-ink-900 hover:bg-ink-50"
+                  onClick={() => setOpen(false)}
+                >
+                  Wallet
+                </Link>
+              </>
             )}
             <a
               href="https://bite.express"
