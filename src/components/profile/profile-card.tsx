@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -12,6 +13,7 @@ import {
   MapPin,
   ArrowRight,
   Pencil,
+  Lock,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-store";
 import { fetchProfile } from "@/lib/api/auth";
@@ -52,8 +54,18 @@ export function ProfileCard() {
     <div className="space-y-6">
       <div className="rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-ink-100 text-ink-700">
-            <User2 size={22} strokeWidth={1.8} />
+          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-100 text-ink-700">
+            {user?.image_full_url ? (
+              <Image
+                src={user.image_full_url}
+                alt=""
+                fill
+                sizes="56px"
+                className="object-cover"
+              />
+            ) : (
+              <User2 size={22} strokeWidth={1.8} />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-medium text-ink-900">
@@ -114,6 +126,26 @@ export function ProfileCard() {
             </span>
             <span className="block text-xs text-ink-500">
               Add or edit the places you order to
+            </span>
+          </span>
+        </span>
+        <ArrowRight size={16} className="text-ink-400" />
+      </Link>
+
+      <Link
+        href="/profile/password"
+        className="flex items-center justify-between gap-3 rounded-3xl border border-ink-200 bg-white p-5 shadow-soft transition-shadow hover:shadow-elevated"
+      >
+        <span className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
+            <Lock size={18} />
+          </span>
+          <span>
+            <span className="block text-base font-medium text-ink-900">
+              Change password
+            </span>
+            <span className="block text-xs text-ink-500">
+              Pick a new password for sign-in
             </span>
           </span>
         </span>

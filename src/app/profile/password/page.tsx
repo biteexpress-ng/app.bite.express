@@ -3,14 +3,13 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { RouteGuard } from "@/components/auth/route-guard";
-import { ProfileEditForm } from "@/components/profile/profile-edit-form";
-import { AvatarUploader } from "@/components/profile/avatar-uploader";
+import { ChangePasswordForm } from "@/components/profile/change-password-form";
 
 export const metadata: Metadata = {
-  title: "Edit profile",
+  title: "Change password",
 };
 
-export default function ProfileEditPage() {
+export default function ChangePasswordPage() {
   return (
     <section className="bg-ink-50 py-10 md:py-14">
       <Container size="prose">
@@ -21,13 +20,10 @@ export default function ProfileEditPage() {
           <ArrowLeft size={14} /> Back to profile
         </Link>
         <h1 className="mb-6 font-serif text-display-md text-ink-900">
-          Edit your profile
+          Change your password
         </h1>
         <RouteGuard>
-          <div className="space-y-6">
-            <AvatarUploader />
-            <ProfileEditForm />
-          </div>
+          <ChangePasswordForm />
         </RouteGuard>
       </Container>
     </section>

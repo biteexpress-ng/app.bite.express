@@ -373,6 +373,94 @@ type UpdateProfileResponse = {
   otp_send?: boolean;
 };
 
+/* -------------------------------------------------------------- */
+/* Avatar upload                                                   */
+/* -------------------------------------------------------------- */
+
+/**
+ * Update just the avatar.
+ *
+ * Backend's update_profile accepts an `image` multipart field
+ * (max:2048KB) alongside the standard required {name, email, phone}.
+ * We resend the current values for those so validation passes
+ * without triggering email / phone re-verification.
+ */
+export type AvatarUploadResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+export async function uploadAvatar(
+  file: File,
+  currentUser: AuthUser,
+): Promise<AvatarUploadResult> {
+  const form = new FormData();
+  form.append("image", file);
+  form.append(
+    "name",
+    [currentUser.f_name, currentUser.l_name].filter(Boolean).join(" ").trim() ||
+      "Customer",
+  );
+  form.append("email", currentUser.email ?? "");
+  form.append("phone", currentUser.phone ?? "");
+
+  const res = await api<{ message?: string }>(
+    "/api/v1/customer/update-profile",
+    { method: "POST", body: form },
+  );
+  if (res.ok) return { ok: true };
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message };
+}
+
+/* -------------------------------------------------------------- */
+/* Password change                                                 */
+/* -------------------------------------------------------------- */
+
+/**
+ * Change the customer's password.
+ *
+ * Backend triggers the password-update branch when
+ * `button_type === "change_password"` is sent. It still requires
+ * name/email/phone (we resend the current values) and applies
+ * Password::min(8) on the new password.
+ *
+ * Note: the backend does NOT verify the current password — the
+ * bearer token is sufficient authorisation server-side. We still
+ * collect "current password" in the UI as a defence-in-depth
+ * affordance (a stolen tab can't silently change the password
+ * without it), but it's UX-only.
+ */
+export type ChangePasswordResult =
+  | { ok: true; message: string }
+  | { ok: false; message: string; fieldErrors?: Record<string, string[]> };
+
+export async function changePassword(input: {
+  newPassword: string;
+  currentUser: AuthUser;
+}): Promise<ChangePasswordResult> {
+  const u = input.currentUser;
+  const res = await api<{ message?: string }>(
+    "/api/v1/customer/update-profile",
+    {
+      method: "POST",
+      body: {
+        name:
+          [u.f_name, u.l_name].filter(Boolean).join(" ").trim() || "Customer",
+        email: u.email ?? "",
+        phone: u.phone ?? "",
+        password: input.newPassword,
+        button_type: "change_password",
+      },
+    },
+  );
+  if (res.ok)
+    return { ok: true, message: res.data.message ?? "Password updated." };
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message, fieldErrors: res.errors };
+}
+
+/* -------------------------------------------------------------- */
+
 export async function updateProfile(
   input: UpdateProfileInput,
 ): Promise<UpdateProfileResult> {

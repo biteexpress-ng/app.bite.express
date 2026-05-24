@@ -22,7 +22,11 @@ export type AuthUser = {
   l_name?: string | null;
   email?: string | null;
   phone?: string | null;
+  /** Just the filename (e.g. "2024-…-abc.png"). */
   image?: string | null;
+  /** Full URL the backend resolves (https://dashboard.bite.express/storage/…).
+   *  Prefer this over `image` for rendering. */
+  image_full_url?: string | null;
   /** Wallet balance in NGN. Comes from /customer/info. */
   wallet_balance?: number;
 };
