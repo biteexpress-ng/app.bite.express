@@ -7,8 +7,9 @@ import { ArrowRight, Loader2, ShoppingBag } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { useLocation } from "@/lib/location-store";
 import { useAuth } from "@/lib/auth-store";
-import { placeOrder } from "@/lib/api/orders";
+import { placeOrder, confirmPaystackPayment } from "@/lib/api/orders";
 import { fetchStoreDetail } from "@/lib/api/store-detail";
+import { payWithPaystack } from "@/lib/paystack";
 import { distanceKm } from "@/lib/geo";
 import { OrderSummary } from "./order-summary";
 import { PaymentPicker, type PaymentMethod } from "./payment-picker";
@@ -133,13 +134,74 @@ export function CheckoutFlow() {
       dmTips: tip,
     });
 
-    if (res.ok) {
-      clear();
-      router.replace(`/checkout/success?order_id=${res.orderId}`);
-    } else {
+    if (!res.ok) {
       setPhase({ kind: "ready", moduleId: phase.moduleId });
       alert(res.message); // crude but adequate for v0 — replace with toast next pass
+      return;
     }
+
+    // COD: nothing more to do — go straight to success.
+    if (payment === "cash_on_delivery") {
+      clear();
+      router.replace(`/checkout/success?order_id=${res.orderId}`);
+      return;
+    }
+
+    // Paystack inline popup path.
+    if (payment === "digital_payment") {
+      const customerEmail =
+        address.contactPersonEmail ?? user?.email ?? null;
+      if (!customerEmail) {
+        setPhase({ kind: "ready", moduleId: phase.moduleId });
+        alert(
+          "We need an email on file to charge a card. Add one in /profile then try again.",
+        );
+        return;
+      }
+
+      // Paystack requires the amount in kobo. We trust the server's
+      // total_ammount over the locally-computed subtotal so delivery
+      // fees / surcharges / discounts are included.
+      const amountKobo = Math.round(res.amount * 100);
+      const reference = `BE-${res.orderId}-${Date.now().toString(36)}`;
+
+      const pop = await payWithPaystack({
+        email: customerEmail,
+        amountKobo,
+        reference,
+        metadata: { order_id: res.orderId },
+      });
+
+      if (pop.status === "cancelled") {
+        setPhase({ kind: "ready", moduleId: phase.moduleId });
+        alert(
+          `Payment cancelled. Your order #${res.orderId} is on hold — you can retry by re-placing it.`,
+        );
+        return;
+      }
+      if (pop.status === "error") {
+        setPhase({ kind: "ready", moduleId: phase.moduleId });
+        alert(pop.message);
+        return;
+      }
+
+      const confirm = await confirmPaystackPayment(res.orderId, pop.reference);
+      if (!confirm.ok) {
+        setPhase({ kind: "ready", moduleId: phase.moduleId });
+        alert(
+          `Paystack charged your card, but we couldn't confirm it server-side: ${confirm.message}. Ops has been notified.`,
+        );
+        return;
+      }
+
+      clear();
+      router.replace(`/checkout/success?order_id=${res.orderId}`);
+      return;
+    }
+
+    // wallet, offline, bank_transfer — disabled in PaymentPicker for now.
+    setPhase({ kind: "ready", moduleId: phase.moduleId });
+    alert("That payment method isn't wired up yet.");
   }
 
   const placing = phase.kind === "submitting";

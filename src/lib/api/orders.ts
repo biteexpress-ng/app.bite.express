@@ -71,11 +71,14 @@ export type PlaceOrderInput = {
 type PlaceOrderResponse = {
   message?: string;
   order_id?: number;
+  /** Yes, the backend really does spell it with two m's
+   *  (PlaceNewOrder.php line 552). */
   total_ammount?: number;
+  status?: string;
 };
 
 export type PlaceOrderResult =
-  | { ok: true; orderId: number }
+  | { ok: true; orderId: number; amount: number }
   | { ok: false; message: string };
 
 function toWireVariation(
@@ -129,10 +132,44 @@ export async function placeOrder(
 
   if (res.ok) {
     if (typeof res.data.order_id === "number") {
-      return { ok: true, orderId: res.data.order_id };
+      return {
+        ok: true,
+        orderId: res.data.order_id,
+        amount: Number(res.data.total_ammount ?? 0),
+      };
     }
     return { ok: false, message: "Order placed but no id returned." };
   }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message };
+}
+
+/**
+ * POST /api/v1/customer/order/confirm-paystack-payment
+ *
+ * Called after the Paystack inline popup fires its `callback` with a
+ * reference. The backend verifies the reference with Paystack's API
+ * (the standard webhook is DVA-only and skips card payments), then
+ * flips order.payment_status = "paid".
+ *
+ * The reference here is the SAME one we passed to the popup as `ref`.
+ */
+export type ConfirmPaystackResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+export async function confirmPaystackPayment(
+  orderId: number,
+  reference: string,
+): Promise<ConfirmPaystackResult> {
+  const res = await api<{ message?: string; status?: string }>(
+    "/api/v1/customer/order/confirm-paystack-payment",
+    {
+      method: "POST",
+      body: { order_id: orderId, reference },
+    },
+  );
+  if (res.ok) return { ok: true };
   if ("skipped" in res) return { ok: false, message: "Backend not configured." };
   return { ok: false, message: res.message };
 }

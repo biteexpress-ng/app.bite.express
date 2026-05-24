@@ -33,14 +33,13 @@ const OPTIONS: Option[] = [
   {
     id: "digital_payment",
     label: "Card (Paystack)",
-    hint: "Wired up in the next release.",
+    hint: "Pay now with any card, bank, or USSD via Paystack.",
     icon: <CreditCard size={18} />,
-    disabled: true,
   },
   {
     id: "bank_transfer",
     label: "Bank transfer (Dedicated account)",
-    hint: "Use your wallet DVA — coming next.",
+    hint: "Top up your wallet from the Wallet page first, then pay from balance.",
     icon: <Landmark size={18} />,
     disabled: true,
   },
