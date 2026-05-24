@@ -17,7 +17,8 @@ type State =
       kind: "ready";
       stores: Store[];
       total: number;
-      offset: number;
+      /** 1-based page number that has already been loaded. */
+      loadedPage: number;
       loadingMore: boolean;
     }
   | { kind: "error"; message: string };
@@ -50,14 +51,14 @@ export function StoreList({ moduleId }: { moduleId: number }) {
       lat: stored.lat,
       lng: stored.lng,
       limit: PAGE_SIZE,
-      offset: 0,
+      offset: 1,
     }).then((res) => {
       if (res.ok) {
         setState({
           kind: "ready",
           stores: res.data.stores,
           total: res.data.total_size,
-          offset: PAGE_SIZE,
+          loadedPage: 1,
           loadingMore: false,
         });
       } else {
@@ -70,20 +71,21 @@ export function StoreList({ moduleId }: { moduleId: number }) {
     if (state.kind !== "ready" || state.loadingMore) return;
     if (!stored?.zoneCheck || stored.zoneCheck.status !== "in-zone") return;
     setState({ ...state, loadingMore: true });
+    const nextPage = state.loadedPage + 1;
     const res = await fetchStores({
       zoneIds: stored.zoneCheck.zoneIds,
       moduleId,
       lat: stored.lat,
       lng: stored.lng,
       limit: PAGE_SIZE,
-      offset: state.offset,
+      offset: nextPage,
     });
     if (res.ok) {
       setState({
         kind: "ready",
         stores: [...state.stores, ...res.data.stores],
         total: res.data.total_size,
-        offset: state.offset + PAGE_SIZE,
+        loadedPage: nextPage,
         loadingMore: false,
       });
     } else {

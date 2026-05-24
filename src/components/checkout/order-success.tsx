@@ -32,19 +32,24 @@ export function OrderSuccess() {
       )}
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+        {orderId && (
+          <Link
+            href={`/orders/${orderId}`}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-sm font-medium text-white shadow-sm hover:bg-brand-red-600"
+          >
+            Track your order
+            <ArrowRight size={14} />
+          </Link>
+        )}
         <Link
           href="/browse"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-sm font-medium text-white shadow-sm hover:bg-brand-red-600"
+          className={
+            "inline-flex h-11 items-center justify-center gap-2 rounded-full border border-ink-200 bg-white px-6 text-sm font-medium text-ink-900 hover:bg-ink-50"
+          }
         >
           Browse more shops
-          <ArrowRight size={14} />
         </Link>
       </div>
-
-      <p className="mt-6 text-xs text-ink-500">
-        Live order tracking lands in the next release. For now, watch your
-        email and SMS.
-      </p>
     </div>
   );
 }

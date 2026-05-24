@@ -4,6 +4,167 @@ import { api } from "@/lib/api-client";
 import type { CartLine } from "@/lib/cart-store";
 import type { VariationSelection } from "@/lib/food-variations";
 
+/* -------------------------------------------------------------- */
+/* Order list + detail + tracking                                  */
+/* -------------------------------------------------------------- */
+
+/** Shared by /order/list (history) and /order/running-orders.
+ *  Subset of the full Order shape the backend returns — fields
+ *  not used in the UI are dropped from the type for clarity. */
+export type OrderSummary = {
+  id: number;
+  order_amount: number;
+  order_status: OrderStatus;
+  payment_status: "paid" | "unpaid";
+  payment_method?: string | null;
+  created_at: string;
+  delivery_time?: string | null;
+  schedule_at?: string | null;
+  details_count?: number;
+  delivery_address?: {
+    contact_person_name?: string;
+    contact_person_number?: string;
+    address?: string;
+  } | null;
+  store?: {
+    id?: number;
+    name?: string;
+    logo_full_url?: string | null;
+  } | null;
+  delivery_man?:
+    | Array<{
+        id: number;
+        f_name?: string;
+        l_name?: string;
+        phone?: string;
+        image_full_url?: string | null;
+      }>
+    | null;
+};
+
+export type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "processing"
+  | "handover"
+  | "picked_up"
+  | "delivered"
+  | "canceled"
+  | "refund_requested"
+  | "refund_request_canceled"
+  | "refunded"
+  | "failed"
+  | "returned"
+  | "accepted"
+  | "ready_for_handover";
+
+export type OrderListResponse = {
+  total_size: number;
+  limit: number;
+  offset: number;
+  orders: OrderSummary[];
+};
+
+export type OrderListResult =
+  | { ok: true; data: OrderListResponse }
+  | { ok: false; message: string };
+
+/** Currently-active orders (status NOT in delivered/canceled/refund*).
+ *  offset is 1-based per the backend's paginate('page', $offset). */
+export async function fetchRunningOrders(
+  page = 1,
+  limit = 10,
+): Promise<OrderListResult> {
+  const res = await api<OrderListResponse>(
+    `/api/v1/customer/order/running-orders?limit=${limit}&offset=${page}`,
+  );
+  if (res.ok) return { ok: true, data: res.data };
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message };
+}
+
+/** History orders (delivered, canceled, refunded etc). */
+export async function fetchOrderHistory(
+  page = 1,
+  limit = 10,
+): Promise<OrderListResult> {
+  const res = await api<OrderListResponse>(
+    `/api/v1/customer/order/list?limit=${limit}&offset=${page}`,
+  );
+  if (res.ok) return { ok: true, data: res.data };
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message };
+}
+
+/** Per-line items on a single order. The endpoint returns either an
+ *  array of order_detail records OR (for parcel/prescription orders)
+ *  the order itself. We normalise to an array. */
+export type OrderDetailLine = {
+  id: number;
+  item_id?: number | null;
+  item_campaign_id?: number | null;
+  /** The full snapshot of the item at order time, JSON-encoded. */
+  item_details?: string;
+  price: number;
+  discount_on_item?: number;
+  total_add_on_price?: number;
+  quantity: number;
+  variant?: string | null;
+  variation?: unknown[];
+  add_ons?: unknown[];
+  tax_amount?: number;
+};
+
+export type OrderDetailLinesResult =
+  | { ok: true; lines: OrderDetailLine[] }
+  | { ok: false; message: string };
+
+export async function fetchOrderDetailLines(
+  orderId: number,
+): Promise<OrderDetailLinesResult> {
+  const res = await api<OrderDetailLine[] | Record<string, unknown>>(
+    `/api/v1/customer/order/details?order_id=${orderId}`,
+  );
+  if (res.ok) {
+    if (Array.isArray(res.data)) return { ok: true, lines: res.data };
+    return { ok: true, lines: [] };
+  }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message };
+}
+
+/** Full order header + timelines, used on the /orders/[id] page. */
+export type OrderTimeline = {
+  id: number;
+  order_id: number;
+  event: string;
+  status?: string;
+  created_at: string;
+};
+
+export type OrderTrack = OrderSummary & {
+  timelines?: OrderTimeline[];
+};
+
+export type OrderTrackResult =
+  | { ok: true; order: OrderTrack }
+  | { ok: false; message: string };
+
+export async function fetchOrderTrack(
+  orderId: number,
+): Promise<OrderTrackResult> {
+  const res = await api<OrderTrack>(
+    `/api/v1/customer/order/track?order_id=${orderId}`,
+  );
+  if (res.ok) return { ok: true, order: res.data };
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message };
+}
+
+/* -------------------------------------------------------------- */
+/* Existing helpers below                                          */
+/* -------------------------------------------------------------- */
+
 /**
  * Order placement against POST /api/v1/customer/order/place.
  *

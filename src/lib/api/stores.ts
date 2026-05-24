@@ -15,7 +15,9 @@ import { api } from "@/lib/api-client";
  *   type       all | delivery | take_away  (default all)
  *   store_type all | restaurant | grocery | …
  *   limit      page size (default ~10)
- *   offset     page offset (default 0)
+ *   offset     1-BASED PAGE NUMBER (NOT a skip count) — backend
+ *              does `paginate($limit, ['*'], 'page', $offset)` so
+ *              the first page is 1, the second is 2, etc.
  *   featured   1 to filter featured only
  *
  * Response: { stores: Store[], total_size: number, limit, offset }
@@ -75,7 +77,7 @@ export async function fetchStores({
   filter = "all",
   type = "all",
   limit = 12,
-  offset = 0,
+  offset = 1,
 }: FetchStoresParams): Promise<StoresResult> {
   const path =
     `/api/v1/stores/get-stores/${encodeURIComponent(filter)}` +
