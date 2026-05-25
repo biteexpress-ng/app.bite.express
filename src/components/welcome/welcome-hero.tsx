@@ -14,7 +14,7 @@ import { useLocation, type DeliveryLocation } from "@/lib/location-store";
  *   - in-zone CTA -> /browse
  *   - out-of-zone notify-me capture
  *   - temp-unavailable notify-me capture
- *   - soft error / skipped
+ *   - soft error/skipped
  *
  * Returning visitors see their last picked address rehydrated from
  * localStorage.
