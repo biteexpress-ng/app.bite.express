@@ -78,33 +78,44 @@ export function PaymentPicker({
   orderTotal,
 }: Props) {
   return (
-    <div className="space-y-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       {OPTIONS.map((opt) => {
         const checked = opt.id === value;
         return (
           <label
             key={opt.id}
             className={cn(
-              "flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors",
+              "group relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-2xl border p-4 transition-all duration-200",
               checked
-                ? "border-brand-red bg-brand-red/5"
-                : "border-ink-200 bg-white hover:border-ink-300",
+                ? "border-transparent bg-white shadow-[0_0_0_2px_rgba(222,22,0,0.5),0_18px_42px_-18px_rgba(222,22,0,0.35)]"
+                : "border-ink-200 bg-white hover:-translate-y-px hover:border-brand-red/30 hover:shadow-soft",
             )}
           >
             <span
               className={cn(
-                "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
                 checked
                   ? "border-brand-red bg-brand-red text-white"
                   : "border-ink-300 bg-white",
               )}
               aria-hidden="true"
             >
-              {checked && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+              {checked && <span className="h-2 w-2 rounded-full bg-white" />}
             </span>
-            <span className="mt-0.5 text-ink-500">{opt.icon}</span>
+            <span
+              className={cn(
+                "mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors",
+                checked
+                  ? "bg-brand-red/10 text-brand-red"
+                  : "bg-canvas-sunken text-ink-700",
+              )}
+            >
+              {opt.icon}
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink-900">{opt.label}</p>
+              <p className="text-sm font-semibold tracking-[-0.005em] text-ink-900">
+                {opt.label}
+              </p>
               <OptionHint
                 id={opt.id}
                 walletBalance={walletBalance}

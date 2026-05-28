@@ -185,9 +185,9 @@ export function StoreDetailView({ storeId }: { storeId: number }) {
     <div>
       <Link
         href="/browse"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-600 hover:text-ink-900"
+        className="mb-5 inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-ink-700 backdrop-blur transition-colors hover:border-brand-red/30 hover:text-brand-red"
       >
-        <ArrowLeft size={14} /> Back to shops
+        <ArrowLeft size={13} /> Back to shops
       </Link>
 
       <StoreHeader store={store} />
@@ -237,7 +237,7 @@ function CategoryTabs({
     ...categories.map((c) => ({ id: c.id, name: c.name })),
   ];
   return (
-    <div className="-mx-1 mb-6 flex gap-2 overflow-x-auto px-1 pb-1">
+    <div className="-mx-1 mb-7 flex gap-2 overflow-x-auto px-1 pb-1">
       {tabs.map((c) => {
         const isActive = c.id === selected;
         return (
@@ -246,10 +246,10 @@ function CategoryTabs({
             type="button"
             onClick={() => onSelect(c.id)}
             className={cn(
-              "inline-flex shrink-0 items-center rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
+              "inline-flex shrink-0 items-center rounded-pill border px-4 py-2 text-sm font-medium transition-all duration-200",
               isActive
-                ? "border-brand-red bg-brand-red text-white"
-                : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50",
+                ? "border-transparent bg-ink-900 text-white shadow-[0_8px_22px_-8px_rgba(13,13,15,0.55)]"
+                : "border-ink-200 bg-white text-ink-700 hover:-translate-y-px hover:border-brand-red/30 hover:text-brand-red hover:shadow-soft",
             )}
           >
             {c.name}
@@ -297,7 +297,7 @@ function CenterSpinner({ label }: { label: string }) {
 
 function EmptyInline({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-ink-200 bg-white p-8 text-center text-sm text-ink-600">
+    <div className="rounded-2xl border border-dashed border-ink-200 bg-white/60 p-10 text-center text-sm text-ink-600 backdrop-blur">
       {message}
     </div>
   );
@@ -313,13 +313,13 @@ function EmptyState({
   cta?: { href: string; label: string };
 }) {
   return (
-    <div className="mx-auto max-w-md rounded-3xl border border-ink-200 bg-white p-8 text-center shadow-soft">
-      <h2 className="font-serif text-2xl text-ink-900">{title}</h2>
+    <div className="mx-auto max-w-md rounded-3xl border border-ink-200 bg-white p-10 text-center shadow-card">
+      <h2 className="font-serif text-display-sm text-ink-900">{title}</h2>
       <p className="mt-2 text-sm text-ink-600">{body}</p>
       {cta && (
         <Link
           href={cta.href}
-          className="mt-6 inline-flex h-11 items-center justify-center rounded-full bg-brand-red px-6 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-red-600"
+          className="btn-flame mt-7 inline-flex h-12 items-center justify-center rounded-pill px-7 text-sm font-medium text-white"
         >
           {cta.label}
         </Link>

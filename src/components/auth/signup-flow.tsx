@@ -91,7 +91,7 @@ export function SignUpFlow() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-4 rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8"
+      className="rise space-y-4 rounded-[2rem] border border-ink-200 bg-white p-7 shadow-floating sm:p-10"
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
@@ -152,8 +152,7 @@ export function SignUpFlow() {
         type="submit"
         disabled={submitting}
         className={cn(
-          "inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm transition-colors",
-          "hover:bg-brand-red-600 active:bg-brand-red-700",
+          "btn-flame inline-flex h-14 w-full items-center justify-center gap-2 rounded-pill px-7 text-base font-medium text-white",
           "disabled:cursor-wait disabled:opacity-70",
         )}
       >
@@ -218,7 +217,7 @@ function Field({
   const hasError = errors && errors.length > 0;
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-ink-700">
+      <span className="mb-2 block text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-500">
         {label}
       </span>
       <input
@@ -230,17 +229,17 @@ function Field({
         inputMode={inputMode}
         autoFocus={autoFocus}
         className={cn(
-          "w-full rounded-xl border bg-white px-4 py-3 text-base text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2",
+          "w-full rounded-2xl border bg-white px-5 py-4 text-base text-ink-900 placeholder:text-ink-400 shadow-soft transition-all focus:outline-none focus:ring-4",
           hasError
-            ? "border-error focus:border-error focus:ring-error/20"
-            : "border-ink-200 focus:border-brand-red focus:ring-brand-red/20",
+            ? "border-error focus:border-error focus:ring-error/15"
+            : "border-ink-200 focus:border-brand-red/40 focus:ring-brand-red/10",
         )}
       />
       {hasError && (
-        <span className="mt-1 block text-xs text-error">{errors[0]}</span>
+        <span className="mt-1.5 block text-xs text-error">{errors[0]}</span>
       )}
       {!hasError && hint && (
-        <span className="mt-1 block text-xs text-ink-500">{hint}</span>
+        <span className="mt-1.5 block text-xs text-ink-500">{hint}</span>
       )}
     </label>
   );

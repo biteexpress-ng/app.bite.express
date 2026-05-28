@@ -9,19 +9,22 @@ export const metadata: Metadata = {
 
 export default function BrowsePage() {
   return (
-    <section className="bg-ink-50 py-10 md:py-14">
+    <section className="aurora-bg relative isolate py-12 md:py-16">
       <Container>
-        <header className="mb-6">
-          <h1 className="font-serif text-display-md text-ink-900">
+        <header className="fade-up mb-8 max-w-3xl">
+          <span className="inline-flex items-center gap-2 rounded-pill border border-ink-200 bg-white/80 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-ink-700 backdrop-blur">
+            For you
+          </span>
+          <h1 className="mt-4 font-serif text-display-lg text-ink-900 md:text-display-xl">
             What are you in the mood for?
           </h1>
-          <p className="mt-2 max-w-2xl text-ink-600">
+          <p className="mt-3 max-w-2xl text-base leading-relaxed text-ink-600 md:text-lg">
             Pick a category to see the shops delivering to you right now — or
             search across everything in your area.
           </p>
         </header>
 
-        <CrossModuleSearch className="mb-8" />
+        <CrossModuleSearch className="mb-10" />
 
         <ModulePicker />
       </Container>

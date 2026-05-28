@@ -114,16 +114,14 @@ export function StoreList({ moduleId }: { moduleId: number }) {
 
   if (state.stores.length === 0) {
     return (
-      <div className="rounded-2xl border border-ink-200 bg-white p-8 text-center shadow-soft">
-        <h2 className="font-serif text-xl text-ink-900">
-          No shops here yet
-        </h2>
+      <div className="rounded-3xl border border-ink-200 bg-white p-10 text-center shadow-card">
+        <h2 className="font-serif text-2xl text-ink-900">No shops here yet</h2>
         <p className="mt-2 text-sm text-ink-600">
           We're adding new vendors in your area every week.
         </p>
         <Link
           href="/browse"
-          className="mt-5 inline-flex h-10 items-center gap-1.5 rounded-full border border-ink-200 px-4 text-sm text-ink-900 hover:bg-ink-50"
+          className="mt-6 inline-flex h-11 items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-5 text-sm font-medium text-ink-900 transition-all hover:border-brand-red/30 hover:text-brand-red"
         >
           <ArrowLeft size={14} />
           Other categories
@@ -136,19 +134,19 @@ export function StoreList({ moduleId }: { moduleId: number }) {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="fade-up grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {state.stores.map((s) => (
           <StoreCard key={s.id} store={s} />
         ))}
       </div>
 
       {hasMore && (
-        <div className="mt-8 flex justify-center">
+        <div className="mt-10 flex justify-center">
           <button
             type="button"
             onClick={loadMore}
             disabled={state.loadingMore}
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-ink-200 bg-white px-6 text-sm font-medium text-ink-900 shadow-sm hover:bg-ink-50 disabled:cursor-wait"
+            className="inline-flex h-12 items-center gap-2 rounded-pill border border-ink-200 bg-white px-7 text-sm font-medium text-ink-900 shadow-soft transition-all hover:-translate-y-px hover:border-brand-red/30 hover:text-brand-red hover:shadow-elevated disabled:cursor-wait disabled:opacity-60"
           >
             {state.loadingMore && (
               <Loader2 size={14} className="animate-spin" />

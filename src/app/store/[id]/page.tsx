@@ -23,7 +23,7 @@ export default async function StoreDetailPage({ params }: Props) {
   }
 
   return (
-    <section className="bg-ink-50 py-10 md:py-14">
+    <section className="aurora-bg relative isolate py-10 md:py-14">
       <Container>
         <StoreDetailView storeId={storeId} />
       </Container>

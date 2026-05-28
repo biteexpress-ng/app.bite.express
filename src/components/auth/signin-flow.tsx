@@ -69,7 +69,7 @@ export function SignInFlow() {
   }
 
   return (
-    <div className="rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
+    <div className="rise rounded-[2rem] border border-ink-200 bg-white p-7 shadow-floating sm:p-10">
       {step.kind === "phone" && (
         <PhoneStep
           onLookup={(phone, result) => {
@@ -461,8 +461,7 @@ function ConfirmExistingStep({
         onClick={handleYes}
         disabled={submitting}
         className={cn(
-          "inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm transition-colors",
-          "hover:bg-brand-red-600 active:bg-brand-red-700",
+          "btn-flame inline-flex h-14 w-full items-center justify-center gap-2 rounded-pill px-7 text-base font-medium text-white",
           "disabled:cursor-wait disabled:opacity-70",
         )}
       >
@@ -516,7 +515,7 @@ function NotFoundStep({
       </p>
       <Link
         href={`/signup?phone=${encodeURIComponent(phone)}&next=${encodeURIComponent(next)}`}
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm hover:bg-brand-red-600"
+        className="btn-flame inline-flex h-14 w-full items-center justify-center gap-2 rounded-pill px-7 text-base font-medium text-white"
       >
         Create an account
         <ArrowRight size={16} strokeWidth={2.2} />
@@ -625,7 +624,7 @@ function Field({
 }: FieldProps) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-ink-700">
+      <span className="mb-2 block text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-500">
         {label}
       </span>
       <input
@@ -636,7 +635,7 @@ function Field({
         autoComplete={autoComplete}
         inputMode={inputMode}
         autoFocus={autoFocus}
-        className="w-full rounded-xl border border-ink-200 bg-white px-4 py-3 text-base text-ink-900 placeholder:text-ink-400 focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
+        className="w-full rounded-2xl border border-ink-200 bg-white px-5 py-4 text-base text-ink-900 placeholder:text-ink-400 shadow-soft transition-all focus:border-brand-red/40 focus:outline-none focus:ring-4 focus:ring-brand-red/10"
       />
     </label>
   );
@@ -654,8 +653,7 @@ function PrimaryButton({
       type="submit"
       disabled={submitting}
       className={cn(
-        "inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm transition-colors",
-        "hover:bg-brand-red-600 active:bg-brand-red-700",
+        "btn-flame inline-flex h-14 w-full items-center justify-center gap-2 rounded-pill px-7 text-base font-medium text-white",
         "disabled:cursor-wait disabled:opacity-70",
       )}
     >

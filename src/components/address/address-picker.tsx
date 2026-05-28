@@ -165,13 +165,13 @@ type InputCommonProps = {
 };
 
 const wrapperBase =
-  "flex items-center gap-3 rounded-full border px-5 py-3 transition-colors focus-within:ring-2 focus-within:ring-brand-red focus-within:ring-offset-2";
+  "flex items-center gap-3 rounded-pill border px-5 py-4 transition-all duration-200 focus-within:ring-2 focus-within:ring-brand-red focus-within:ring-offset-2";
 
 const wrapperVariants: Record<Variant, string> = {
   dark:
-    "border-white/20 bg-white/10 text-white backdrop-blur focus-within:bg-white/15 focus-within:ring-offset-black/60",
+    "border-white/10 bg-black/40 text-white backdrop-blur-xl shadow-[0_24px_60px_-20px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] focus-within:bg-black/55 focus-within:ring-offset-black/80",
   light:
-    "border-ink-200 bg-white text-ink-900 shadow-soft focus-within:ring-offset-white",
+    "border-ink-200 bg-white text-ink-900 shadow-card focus-within:ring-offset-white focus-within:border-brand-red/40 focus-within:shadow-elevated",
 };
 
 const inputBase =

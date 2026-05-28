@@ -117,25 +117,23 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center"
+        className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-md sm:items-center"
         onClick={onClose}
         role="dialog"
         aria-modal="true"
         aria-label={`Add ${item.name} to cart`}
       >
         <div
-          className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-elevated sm:rounded-3xl"
+          className="rise flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-floating sm:rounded-3xl"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Mobile grab handle — visual cue that this is a
-              bottom sheet. */}
           <div
-            className="flex shrink-0 justify-center pt-2 sm:hidden"
+            className="flex shrink-0 justify-center pt-2.5 sm:hidden"
             aria-hidden="true"
           >
-            <span className="h-1 w-10 rounded-full bg-ink-200" />
+            <span className="h-1.5 w-12 rounded-full bg-ink-200" />
           </div>
-          <div className="relative aspect-[16/9] w-full shrink-0 bg-ink-100">
+          <div className="relative aspect-[16/9] w-full shrink-0 bg-canvas-sunken">
             {item.image_full_url && (
               <Image
                 src={item.image_full_url}
@@ -145,24 +143,29 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
                 className="object-cover"
               />
             )}
+            <div className="image-scrim absolute inset-0" />
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-ink-900 shadow-sm hover:bg-white"
+              className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-ink-900 shadow-card backdrop-blur transition-all hover:bg-white"
             >
               <X size={18} />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-5">
-            <h2 className="text-lg font-medium text-ink-900">{item.name}</h2>
+          <div className="flex-1 overflow-y-auto p-6">
+            <h2 className="font-serif text-2xl tracking-[-0.01em] text-ink-900">
+              {item.name}
+            </h2>
             {item.description && (
-              <p className="mt-1 text-sm text-ink-600">{item.description}</p>
+              <p className="mt-2 text-sm leading-relaxed text-ink-600">
+                {item.description}
+              </p>
             )}
 
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-xl font-semibold text-ink-900">
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold tracking-[-0.01em] text-ink-900">
                 ₦{Math.round(basePrice).toLocaleString()}
               </span>
               {basePrice !== price && (
@@ -210,20 +213,20 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
             )}
           </div>
 
-          <div className="shrink-0 border-t border-ink-200 bg-white p-5">
+          <div className="shrink-0 border-t border-ink-200 bg-white/95 p-5 backdrop-blur">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-ink-600">Quantity</span>
-              <div className="inline-flex h-10 items-center rounded-full border border-ink-200 bg-white">
+              <span className="text-sm font-medium text-ink-700">Quantity</span>
+              <div className="inline-flex h-11 items-center rounded-pill border border-ink-200 bg-white shadow-soft">
                 <button
                   type="button"
                   onClick={() => setQty((q) => Math.max(1, q - 1))}
                   disabled={qty <= 1}
                   aria-label="Decrease quantity"
-                  className="inline-flex h-10 w-10 items-center justify-center text-ink-700 disabled:opacity-40"
+                  className="inline-flex h-11 w-11 items-center justify-center text-ink-700 transition-colors hover:text-brand-red disabled:opacity-40"
                 >
                   <Minus size={16} />
                 </button>
-                <span className="min-w-[2.5rem] text-center text-base font-medium text-ink-900">
+                <span className="min-w-[2.5rem] text-center text-base font-semibold text-ink-900">
                   {qty}
                 </span>
                 <button
@@ -231,7 +234,7 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
                   onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
                   disabled={qty >= maxQty}
                   aria-label="Increase quantity"
-                  className="inline-flex h-10 w-10 items-center justify-center text-ink-700 disabled:opacity-40"
+                  className="inline-flex h-11 w-11 items-center justify-center text-ink-700 transition-colors hover:text-brand-red disabled:opacity-40"
                 >
                   <Plus size={16} />
                 </button>
@@ -243,8 +246,7 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
               onClick={() => handleAdd(false)}
               disabled={submitting || !inStock || !canAdd}
               className={cn(
-                "mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm transition-colors",
-                "hover:bg-brand-red-600 active:bg-brand-red-700",
+                "btn-flame mt-5 inline-flex h-14 w-full items-center justify-center gap-2 rounded-pill px-7 text-base font-medium text-white",
                 "disabled:cursor-not-allowed disabled:opacity-60",
               )}
             >

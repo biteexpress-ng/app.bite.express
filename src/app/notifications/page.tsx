@@ -11,17 +11,22 @@ export const metadata: Metadata = {
 
 export default function NotificationsPage() {
   return (
-    <section className="bg-ink-50 py-10 md:py-14">
+    <section className="aurora-bg relative isolate py-12 md:py-16">
       <Container size="narrow">
         <Link
           href="/profile"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-600 hover:text-ink-900"
+          className="mb-5 inline-flex items-center gap-1.5 rounded-pill border border-ink-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-ink-700 backdrop-blur transition-colors hover:border-brand-red/30 hover:text-brand-red"
         >
-          <ArrowLeft size={14} /> Back to profile
+          <ArrowLeft size={13} /> Back to profile
         </Link>
-        <h1 className="mb-6 font-serif text-display-md text-ink-900">
-          Notifications
-        </h1>
+        <header className="fade-up mb-8">
+          <span className="inline-flex items-center gap-2 rounded-pill border border-ink-200 bg-white/80 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-ink-700 backdrop-blur">
+            Notifications
+          </span>
+          <h1 className="mt-4 font-serif text-display-lg text-ink-900 md:text-display-xl">
+            Notifications
+          </h1>
+        </header>
         <RouteGuard>
           <NotificationsList />
         </RouteGuard>

@@ -9,14 +9,26 @@ export const metadata: Metadata = {
 
 export default function SignUpPage() {
   return (
-    <section className="bg-ink-50 py-16 md:py-24">
+    <section className="aurora-bg relative isolate py-16 md:py-24">
       <Container size="prose">
-        <header className="mb-8 text-center">
-          <h1 className="text-display-md font-serif text-ink-900">
-            Create your <span className="italic text-brand-red">BiteExpress</span>{" "}
+        <header className="fade-up mb-10 text-center">
+          <span className="inline-flex items-center gap-2 rounded-pill border border-ink-200 bg-white/80 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-ink-700 backdrop-blur">
+            Get started
+          </span>
+          <h1 className="mt-5 font-serif text-display-lg tracking-[-0.02em] text-ink-900 md:text-display-xl">
+            Create your{" "}
+            <span
+              className="italic bg-clip-text text-transparent"
+              style={{
+                backgroundImage:
+                  "linear-gradient(90deg, #ff7a47 0%, #de1600 80%)",
+              }}
+            >
+              BiteExpress
+            </span>{" "}
             account
           </h1>
-          <p className="mt-3 text-base text-ink-600">
+          <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-ink-600">
             We just need a few details to get you ordering.
           </p>
         </header>

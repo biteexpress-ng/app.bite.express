@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 
 export default function CheckoutSuccessPage() {
   return (
-    <section className="bg-ink-50 py-12 md:py-20">
-      <Container size="prose">
+    <section className="aurora-bg relative isolate py-16 md:py-24">
+      <Container size="narrow">
         <Suspense fallback={null}>
           <OrderSuccess />
         </Suspense>

@@ -317,59 +317,68 @@ export function CheckoutFlow() {
   const placing = phase.kind === "submitting";
 
   return (
-    <div className="grid gap-8 pb-28 lg:grid-cols-[1fr_22rem] lg:pb-0">
-      <div className="space-y-8">
-        <section>
-          <h2 className="mb-3 font-serif text-xl text-ink-900">Where to</h2>
+    <div className="fade-up grid gap-8 pb-28 lg:grid-cols-[1.6fr_1fr] lg:pb-0">
+      <div className="space-y-10">
+        <CheckoutSection
+          step="01"
+          title="Where to"
+          subtitle="Pick where the rider should drop your order."
+        >
           <AddressPickerCheckout
             picked={stored}
             value={address}
             onChange={setAddress}
           />
-        </section>
+        </CheckoutSection>
 
-        <section>
-          <h2 className="mb-3 font-serif text-xl text-ink-900">How you'd like to pay</h2>
+        <CheckoutSection
+          step="02"
+          title="How you'd like to pay"
+          subtitle="Card, wallet, transfer or cash on arrival."
+        >
           <PaymentPicker
             value={payment}
             onChange={setPayment}
             walletBalance={user?.wallet_balance ?? null}
             orderTotal={subtotal}
           />
-        </section>
+        </CheckoutSection>
 
-        <section>
-          <h2 className="mb-3 font-serif text-xl text-ink-900">Tip your rider</h2>
+        <CheckoutSection
+          step="03"
+          title="Tip your rider"
+          subtitle="100% goes to the rider who delivers your order."
+        >
           <div className="flex flex-wrap gap-2">
-            {[0, 200, 500, 1000].map((amt) => (
-              <button
-                key={amt}
-                type="button"
-                onClick={() => setTip(amt)}
-                className={
-                  "inline-flex h-10 items-center justify-center rounded-full border px-4 text-sm transition-colors " +
-                  (tip === amt
-                    ? "border-brand-red bg-brand-red text-white"
-                    : "border-ink-200 bg-white text-ink-900 hover:border-ink-300")
-                }
-              >
-                {amt === 0 ? "None" : `₦${amt.toLocaleString()}`}
-              </button>
-            ))}
+            {[0, 200, 500, 1000].map((amt) => {
+              const active = tip === amt;
+              return (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => setTip(amt)}
+                  className={
+                    "inline-flex h-11 items-center justify-center rounded-pill border px-5 text-sm font-medium transition-all duration-200 " +
+                    (active
+                      ? "border-transparent bg-ink-900 text-white shadow-[0_8px_22px_-8px_rgba(13,13,15,0.55)]"
+                      : "border-ink-200 bg-white text-ink-900 hover:-translate-y-px hover:border-brand-red/30 hover:text-brand-red hover:shadow-soft")
+                  }
+                >
+                  {amt === 0 ? "No tip" : `₦${amt.toLocaleString()}`}
+                </button>
+              );
+            })}
           </div>
-        </section>
+        </CheckoutSection>
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
         <OrderSummary lines={lines} subtotal={subtotal} />
-        {/* Desktop-only Place CTA — mobile uses the sticky-bottom
-            bar below so it's always reachable without scrolling
-            past the order summary. */}
         <button
           type="button"
           onClick={handlePlace}
           disabled={placing || !address}
-          className="hidden h-12 w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 text-base font-medium text-white shadow-sm hover:bg-brand-red-600 disabled:cursor-not-allowed disabled:opacity-60 lg:inline-flex"
+          className="btn-flame hidden h-14 w-full items-center justify-center gap-2 rounded-pill px-7 text-base font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 lg:inline-flex"
         >
           {placing ? (
             <>
@@ -389,15 +398,10 @@ export function CheckoutFlow() {
         </p>
       </aside>
 
-      {/* Mobile sticky-bottom Place CTA. Mirrors the iOS/Android
-          pattern so the customer can hit the button from anywhere
-          on the page without scrolling to the summary. The aside
-          above adds pb-28 to the page so the bar doesn't cover
-          the last section. */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-200 bg-white/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_16px_rgba(17,17,17,0.06)] backdrop-blur lg:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-200 bg-white/90 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_-12px_rgba(17,17,17,0.12)] backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex max-w-md items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] uppercase tracking-wider text-ink-500">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-500">
               Subtotal
             </p>
             <p className="text-base font-semibold text-ink-900">
@@ -411,7 +415,7 @@ export function CheckoutFlow() {
             type="button"
             onClick={handlePlace}
             disabled={placing || !address}
-            className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-brand-red px-5 text-sm font-medium text-white shadow-sm hover:bg-brand-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-flame inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-pill px-5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {placing ? (
               <>
@@ -428,6 +432,37 @@ export function CheckoutFlow() {
         </div>
       </div>
     </div>
+  );
+}
+
+function CheckoutSection({
+  step,
+  title,
+  subtitle,
+  children,
+}: {
+  step: string;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div className="mb-4 flex items-baseline gap-3">
+        <span className="font-mono text-[0.7rem] font-semibold tracking-[0.18em] text-brand-red">
+          {step}
+        </span>
+        <div>
+          <h2 className="font-serif text-2xl tracking-[-0.012em] text-ink-900">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="mt-1 text-sm text-ink-500">{subtitle}</p>
+          )}
+        </div>
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -484,12 +519,12 @@ function Gate({
   cta: { href: string; label: string };
 }) {
   return (
-    <div className="mx-auto max-w-md rounded-3xl border border-ink-200 bg-white p-8 text-center shadow-soft">
-      <h2 className="font-serif text-2xl text-ink-900">{title}</h2>
-      <p className="mt-2 text-sm text-ink-600">{body}</p>
+    <div className="mx-auto max-w-md rounded-3xl border border-ink-200 bg-white p-10 text-center shadow-card">
+      <h2 className="font-serif text-display-sm text-ink-900">{title}</h2>
+      <p className="mt-2 text-sm leading-relaxed text-ink-600">{body}</p>
       <Link
         href={cta.href}
-        className="mt-6 inline-flex h-11 items-center justify-center rounded-full bg-brand-red px-6 text-sm font-medium text-white shadow-sm hover:bg-brand-red-600"
+        className="btn-flame mt-7 inline-flex h-12 items-center justify-center rounded-pill px-7 text-sm font-medium text-white"
       >
         {cta.label}
       </Link>

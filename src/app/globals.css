@@ -1,88 +1,158 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
- * BiteExpress customer-app brand tokens.
+ * BiteExpress — Premium Customer Web App
  *
- * Mirrored from biteexpress-web/src/app/globals.css. The two apps deploy on
- * different cadences and we intentionally keep them decoupled — when you
- * change brand colours, copy both files.
+ * Visual identity: Apple × Uber × DoorDash. Luxury, effortless, urban.
+ * - Deep obsidian base for hero/dark surfaces with subtle red neon reflections.
+ * - High-contrast brand red kept as the headline accent.
+ * - Glass / frosted layers, refined shadows, soft gradients, generous motion.
+ *
+ * Tokens are exposed via @theme so Tailwind v4 generates utilities for
+ * every named slot (bg-canvas, text-ink-900, shadow-luxe, …). Treat this
+ * file as the single source of truth; do not hard-code hex elsewhere.
  * ------------------------------------------------------------------------- */
 
 @theme {
-  --color-brand-black: #000000;
+  /* ── Brand ───────────────────────────────────────────────────────── */
+  --color-brand-black: #050505;
   --color-brand-red: #de1600;
+  --color-brand-red-400: #ff3d20;
+  --color-brand-red-500: #ee1e08;
   --color-brand-red-600: #c01200;
   --color-brand-red-700: #a30f00;
+  --color-brand-red-950: #2a0500;
   --color-brand-orange: #ff6b4a;
+  --color-brand-orange-400: #ff8b6e;
   --color-brand-orange-600: #f04e29;
+  --color-brand-amber: #ffb27a;
 
-  --color-ink-900: #111111;
-  --color-ink-700: #2a2a2a;
-  --color-ink-600: #6b7280;
-  --color-ink-500: #767676;
-  --color-ink-400: #9ca3af;
-  --color-ink-200: #e5e7eb;
-  --color-ink-100: #f3f4f6;
+  /* Neon — reserved for highlights, glows, hover reflections.
+     Do NOT use as primary surface color. */
+  --color-neon-red: #ff2a14;
+  --color-neon-coral: #ff5a3c;
+  --color-neon-ember: #ff7a47;
+  --color-neon-rose: #ff3d6e;
+
+  /* ── Ink / neutrals ──────────────────────────────────────────────── */
+  --color-ink-1000: #000000;
+  --color-ink-950: #060606;
+  --color-ink-900: #0d0d0f;
+  --color-ink-800: #18181b;
+  --color-ink-700: #2a2a2e;
+  --color-ink-600: #52525b;
+  --color-ink-500: #71717a;
+  --color-ink-400: #a1a1aa;
+  --color-ink-300: #d4d4d8;
+  --color-ink-200: #e4e4e7;
+  --color-ink-100: #f4f4f5;
   --color-ink-50: #fafafa;
   --color-ink-0: #ffffff;
 
-  --color-success: #16a34a;
-  --color-warning: #f59e0b;
-  --color-error: #dc2626;
+  /* Premium warm canvas — a touch warmer than pure white,
+     reads as paper rather than UI. */
+  --color-canvas: #fafaf7;
+  --color-canvas-elevated: #ffffff;
+  --color-canvas-sunken: #f3f2ee;
+  --color-canvas-dark: #0a0a0a;
+  --color-canvas-darker: #050505;
 
-  --color-background: var(--color-ink-0);
+  /* ── Semantic ────────────────────────────────────────────────────── */
+  --color-success: #10b981;
+  --color-success-soft: #ecfdf5;
+  --color-warning: #f59e0b;
+  --color-warning-soft: #fffbeb;
+  --color-error: #dc2626;
+  --color-error-soft: #fef2f2;
+  --color-info: #2563eb;
+
+  --color-background: var(--color-canvas);
   --color-foreground: var(--color-ink-900);
-  --color-muted: var(--color-ink-600);
-  --color-surface: var(--color-ink-50);
+  --color-muted: var(--color-ink-500);
+  --color-muted-foreground: var(--color-ink-600);
+  --color-surface: var(--color-canvas-elevated);
+  --color-surface-sunken: var(--color-canvas-sunken);
   --color-border: var(--color-ink-200);
+  --color-border-strong: var(--color-ink-300);
   --color-primary: var(--color-brand-red);
   --color-primary-foreground: var(--color-ink-0);
   --color-accent: var(--color-brand-orange);
   --color-on-dark: var(--color-ink-0);
 
-  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-serif: var(--font-dm-serif-display), ui-serif, Georgia, "Times New Roman",
-    serif;
+  /* ── Typography ──────────────────────────────────────────────────── */
+  --font-sans: var(--font-dm-sans), "Inter", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: var(--font-dm-serif-display), "Playfair Display", ui-serif,
+    Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+    monospace;
+
+  --text-display-3xl: 5.5rem;
+  --text-display-3xl--line-height: 0.98;
+  --text-display-3xl--letter-spacing: -0.035em;
 
   --text-display-2xl: 4.5rem;
-  --text-display-2xl--line-height: 1.05;
-  --text-display-2xl--letter-spacing: -0.02em;
+  --text-display-2xl--line-height: 1.02;
+  --text-display-2xl--letter-spacing: -0.03em;
 
-  --text-display-xl: 3.75rem;
-  --text-display-xl--line-height: 1.05;
-  --text-display-xl--letter-spacing: -0.02em;
+  --text-display-xl: 3.5rem;
+  --text-display-xl--line-height: 1.04;
+  --text-display-xl--letter-spacing: -0.028em;
 
-  --text-display-lg: 3rem;
-  --text-display-lg--line-height: 1.1;
-  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg: 2.75rem;
+  --text-display-lg--line-height: 1.08;
+  --text-display-lg--letter-spacing: -0.022em;
 
-  --text-display-md: 2.25rem;
-  --text-display-md--line-height: 1.15;
-  --text-display-md--letter-spacing: -0.01em;
+  --text-display-md: 2.125rem;
+  --text-display-md--line-height: 1.14;
+  --text-display-md--letter-spacing: -0.018em;
 
-  --text-display-sm: 1.875rem;
-  --text-display-sm--line-height: 1.2;
+  --text-display-sm: 1.625rem;
+  --text-display-sm--line-height: 1.22;
+  --text-display-sm--letter-spacing: -0.012em;
 
+  --text-eyebrow: 0.7rem;
+  --text-eyebrow--line-height: 1;
+  --text-eyebrow--letter-spacing: 0.22em;
+
+  /* ── Radius ──────────────────────────────────────────────────────── */
   --radius-xs: 0.25rem;
   --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.125rem;
   --radius-2xl: 1.5rem;
   --radius-3xl: 2rem;
+  --radius-4xl: 2.5rem;
+  --radius-pill: 999px;
 
-  --shadow-soft: 0 1px 2px rgba(17, 17, 17, 0.04), 0 4px 16px rgba(17, 17, 17, 0.06);
-  --shadow-elevated: 0 4px 12px rgba(17, 17, 17, 0.08),
-    0 12px 32px rgba(17, 17, 17, 0.08);
-  --shadow-premium: 0 24px 80px rgba(0, 0, 0, 0.28),
-    0 6px 24px rgba(222, 22, 0, 0.16);
+  /* ── Shadow / elevation ──────────────────────────────────────────── */
+  --shadow-hairline: 0 0 0 1px rgba(17, 17, 17, 0.04);
+  --shadow-soft: 0 1px 2px rgba(17, 17, 17, 0.04),
+    0 6px 18px rgba(17, 17, 17, 0.05);
+  --shadow-card: 0 1px 2px rgba(17, 17, 17, 0.04),
+    0 10px 28px -8px rgba(17, 17, 17, 0.08);
+  --shadow-elevated: 0 6px 14px -4px rgba(17, 17, 17, 0.08),
+    0 18px 48px -12px rgba(17, 17, 17, 0.16);
+  --shadow-floating: 0 12px 24px -8px rgba(17, 17, 17, 0.12),
+    0 32px 64px -16px rgba(17, 17, 17, 0.22);
+  --shadow-luxe: 0 24px 80px -16px rgba(0, 0, 0, 0.28),
+    0 8px 28px -4px rgba(222, 22, 0, 0.18);
+  --shadow-neon-red: 0 12px 36px -6px rgba(255, 42, 20, 0.45),
+    0 4px 12px -2px rgba(255, 42, 20, 0.32);
+  --shadow-neon-amber: 0 12px 36px -6px rgba(255, 122, 71, 0.42),
+    0 4px 12px -2px rgba(255, 107, 74, 0.28);
+  --shadow-inner-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
 
-  --container-page: 80rem;
+  /* ── Containers ──────────────────────────────────────────────────── */
+  --container-page: 82rem;
   --container-prose: 42rem;
 
+  /* ── Motion ──────────────────────────────────────────────────────── */
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @layer base {
@@ -97,7 +167,8 @@
     background: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    font-feature-settings: "ss01", "cv11";
+    font-feature-settings: "ss01", "cv11", "cv05";
+    text-rendering: optimizeLegibility;
   }
 
   h1,
@@ -108,7 +179,7 @@
   h6 {
     font-family: var(--font-serif);
     font-weight: 400;
-    letter-spacing: 0;
+    letter-spacing: -0.012em;
   }
 
   ::selection {
@@ -119,48 +190,276 @@
   :focus-visible {
     outline: 2px solid var(--color-brand-red);
     outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: 4px;
   }
+
+  /* Slimmer, premium scrollbars on overflow lanes. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.22); background-clip: padding-box; border: 2px solid transparent; }
 }
 
-/* Dark hero / splash backgrounds */
+/* ─────────────────────────────────────────────────────────────────────
+ * Premium surface treatments
+ * ──────────────────────────────────────────────────────────────────── */
+
+/* Dark obsidian backdrop with red/orange neon orbs.
+   Used for hero, splash, dark sections, full-bleed CTA blocks. */
 .hero-radial-bg {
   background:
-    radial-gradient(circle at 74% 22%, rgba(222, 22, 0, 0.34), transparent 34%),
-    radial-gradient(circle at 18% 78%, rgba(255, 107, 74, 0.16), transparent 32%),
-    linear-gradient(180deg, #050505 0%, #0b0605 54%, #000000 100%);
+    radial-gradient(60rem 36rem at 78% 10%, rgba(255, 42, 20, 0.42), transparent 58%),
+    radial-gradient(50rem 32rem at 12% 86%, rgba(255, 107, 74, 0.20), transparent 60%),
+    radial-gradient(28rem 28rem at 100% 100%, rgba(255, 61, 110, 0.10), transparent 70%),
+    linear-gradient(180deg, #060305 0%, #0a0606 48%, #000000 100%);
 }
 
-.glass-card {
-  border: 1px solid rgba(255, 255, 255, 0.14);
+.aurora-bg {
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06)),
-    rgba(0, 0, 0, 0.28);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.26);
-  backdrop-filter: blur(18px);
+    radial-gradient(40rem 26rem at 14% 0%, rgba(255, 122, 71, 0.16), transparent 60%),
+    radial-gradient(46rem 30rem at 90% 18%, rgba(255, 42, 20, 0.14), transparent 65%),
+    linear-gradient(180deg, #fafaf7 0%, #ffffff 60%, #f6f5f1 100%);
 }
 
-/* Toast mount animation — applied via .toast-enter on each item. */
+.canvas-warm {
+  background:
+    radial-gradient(60rem 40rem at 100% -10%, rgba(255, 107, 74, 0.07), transparent 60%),
+    linear-gradient(180deg, var(--color-canvas) 0%, var(--color-canvas) 100%);
+}
+
+/* Subtle conic neon for accent rims. */
+.neon-rim {
+  position: relative;
+}
+.neon-rim::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from 220deg at 50% 50%,
+    rgba(255, 42, 20, 0.55),
+    rgba(255, 122, 71, 0.32),
+    rgba(255, 42, 20, 0.05) 60%,
+    rgba(255, 42, 20, 0.45)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* Glass / frosted surface for dark backgrounds. */
+.glass-card {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.025)),
+    rgba(8, 6, 6, 0.55);
+  box-shadow:
+    0 24px 64px -12px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+}
+
+/* Light glass — for header / floating chips over light pages. */
+.glass-light {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(17, 17, 17, 0.06);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* Card with hairline gradient border + soft shadow, premium feel. */
+.card-luxe {
+  position: relative;
+  background: var(--color-canvas-elevated);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-card);
+  border: 1px solid rgba(17, 17, 17, 0.06);
+  transition: transform 280ms var(--ease-out-expo),
+    box-shadow 280ms var(--ease-out-expo),
+    border-color 280ms var(--ease-out-expo);
+}
+.card-luxe:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-elevated);
+  border-color: rgba(222, 22, 0, 0.16);
+}
+
+/* Premium primary CTA — gradient + ember glow. */
+.btn-flame {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 40%),
+    linear-gradient(135deg, #ff3d20 0%, #de1600 55%, #a30f00 100%);
+  color: #fff;
+  box-shadow:
+    0 10px 28px -8px rgba(222, 22, 0, 0.55),
+    0 2px 6px rgba(222, 22, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition:
+    transform 220ms var(--ease-out-expo),
+    box-shadow 220ms var(--ease-out-expo),
+    filter 220ms var(--ease-out-expo);
+}
+.btn-flame:hover {
+  transform: translateY(-1px);
+  filter: saturate(110%) brightness(1.04);
+  box-shadow:
+    0 14px 36px -10px rgba(222, 22, 0, 0.65),
+    0 4px 10px rgba(255, 42, 20, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.btn-flame:active {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+/* Obsidian secondary CTA. */
+.btn-obsidian {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 38%),
+    linear-gradient(180deg, #1a1a1d 0%, #050505 100%);
+  color: #fff;
+  box-shadow:
+    0 8px 24px -8px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+.btn-obsidian:hover { filter: brightness(1.18); }
+
+/* Glassy ghost / outline that suits both light & dark surfaces. */
+.btn-ghost-light {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(14px);
+}
+.btn-ghost-light:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+/* Soft chip for badges / pills (light surfaces). */
+.chip-soft {
+  background: linear-gradient(180deg, #fff, #f7f7f4);
+  border: 1px solid rgba(17, 17, 17, 0.06);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 1px 2px rgba(17, 17, 17, 0.04);
+}
+
+/* Image scrim for overlaying text on cover photos. */
+.image-scrim {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* Marquee shimmer for skeleton states. */
+@keyframes biteexpress-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 0%,
+    rgba(0, 0, 0, 0.08) 50%,
+    rgba(0, 0, 0, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: biteexpress-shimmer 1.6s linear infinite;
+}
+
+/* Hairline divider that fades into nothing. */
+.divider-fade {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(17, 17, 17, 0.10) 20%,
+    rgba(17, 17, 17, 0.10) 80%,
+    transparent
+  );
+}
+.divider-fade-dark {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.10) 20%,
+    rgba(255, 255, 255, 0.10) 80%,
+    transparent
+  );
+}
+
+/* Hero spotlight cursor — used on welcome page. */
+.spotlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(36rem 24rem at var(--mx, 70%) var(--my, 18%),
+      rgba(255, 61, 32, 0.18),
+      transparent 60%);
+  transition: background 260ms var(--ease-out-quart);
+}
+
+/* Toast animation — kept from prior pass. */
 @keyframes biteexpress-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.toast-enter { animation: biteexpress-toast-in 220ms var(--ease-out-expo); }
+
+/* Page entry — used by main content wrappers for polish. */
+@keyframes biteexpress-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: biteexpress-fade-up 420ms var(--ease-out-expo) both; }
+
+@keyframes biteexpress-rise {
+  0% { opacity: 0; transform: translateY(14px) scale(0.985); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.rise { animation: biteexpress-rise 520ms var(--ease-out-expo) both; }
+
+/* Headline word reveal — apply to spans. */
+@keyframes biteexpress-word-in {
+  from { opacity: 0; transform: translateY(40%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.word-reveal > span {
+  display: inline-block;
+  animation: biteexpress-word-in 720ms var(--ease-out-expo) both;
 }
 
-.toast-enter {
-  animation: biteexpress-toast-in 180ms ease-out;
+/* Pulse pin used on live order ETA dots / status pills. */
+@keyframes biteexpress-live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.42); }
+  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+.live-dot {
+  width: 8px; height: 8px; border-radius: 999px;
+  background: #10b981;
+  animation: biteexpress-live-pulse 1.6s ease-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  .toast-enter {
-    animation: none;
-  }
+  html { scroll-behavior: auto; }
+  .toast-enter,
+  .fade-up,
+  .rise,
+  .word-reveal > span,
+  .live-dot { animation: none; }
+  .card-luxe { transition: none; }
 }

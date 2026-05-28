@@ -165,8 +165,8 @@ export function CrossModuleSearch({ className }: Props) {
     <div ref={rootRef} className={cn("relative", className)}>
       <div className="relative">
         <Search
-          size={16}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-500"
+          size={17}
+          className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-ink-500"
         />
         <input
           type="search"
@@ -174,7 +174,7 @@ export function CrossModuleSearch({ className }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}
           placeholder="Search every shop and item in your area…"
-          className="w-full rounded-full border border-ink-200 bg-white py-3 pl-11 pr-10 text-sm text-ink-900 placeholder:text-ink-400 shadow-soft focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/15"
+          className="w-full rounded-pill border border-ink-200 bg-white py-4 pl-12 pr-12 text-sm text-ink-900 placeholder:text-ink-400 shadow-card transition-all focus:-translate-y-px focus:border-brand-red/40 focus:outline-none focus:shadow-elevated focus:ring-4 focus:ring-brand-red/10"
           aria-label="Search shops or items"
         />
         {query.length > 0 && (
@@ -182,7 +182,7 @@ export function CrossModuleSearch({ className }: Props) {
             type="button"
             onClick={clear}
             aria-label="Clear search"
-            className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-full text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+            className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700"
           >
             <X size={14} />
           </button>
@@ -190,7 +190,7 @@ export function CrossModuleSearch({ className }: Props) {
       </div>
 
       {showDropdown && (
-        <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-elevated">
+        <div className="absolute left-0 right-0 top-full z-30 mt-3 overflow-hidden rounded-3xl border border-ink-200 bg-white shadow-floating">
           <Dropdown phase={phase} onPick={() => setOpen(false)} />
         </div>
       )}

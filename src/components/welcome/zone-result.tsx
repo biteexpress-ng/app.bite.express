@@ -62,11 +62,13 @@ export function ZoneResult({ location }: ZoneResultProps) {
   }, [location.lat, location.lng]);
 
   return (
-    <div className="mt-4 rounded-2xl border border-white/15 bg-white/[0.05] px-5 py-4 text-left text-sm text-white/90 backdrop-blur">
-      <p className="text-xs uppercase tracking-[0.16em] text-white/55">
-        Selected
+    <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-left text-sm text-white/90 backdrop-blur-xl">
+      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/55">
+        Delivery address
       </p>
-      <p className="mt-1 font-medium text-white">{location.formattedAddress}</p>
+      <p className="mt-1.5 font-medium leading-snug text-white">
+        {location.formattedAddress}
+      </p>
 
       <div className="mt-4">
         <PhaseView phase={phase} />

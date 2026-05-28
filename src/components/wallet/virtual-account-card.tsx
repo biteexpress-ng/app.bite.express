@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, Landmark, Loader2 } from "lucide-react";
+import { Copy, Check, Landmark, Loader2, Wallet as WalletIcon } from "lucide-react";
 import { fetchVirtualAccount, type VirtualAccount } from "@/lib/api/wallet";
+import { useAuth } from "@/lib/auth-store";
 
 type State =
   | { kind: "loading" }
@@ -10,15 +11,15 @@ type State =
   | { kind: "error"; message: string };
 
 /**
- * Customer's Dedicated Virtual Account.
- *
- * GET /api/v1/customer/virtual-account lazy-creates a Paystack
- * Titan DVA on first hit so the very first render of this card may
- * take a couple of seconds while Paystack issues the account.
+ * Premium DVA card — looks like a high-end fintech card with the
+ * BiteExpress brand colors and a copy-able account number.
  */
 export function VirtualAccountCard() {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [copied, setCopied] = useState(false);
+  const user = useAuth((s) => s.user);
+  const balance =
+    typeof user?.wallet_balance === "number" ? user.wallet_balance : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -63,64 +64,106 @@ export function VirtualAccountCard() {
   }
 
   return (
-    <Card>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-ink-500">
-            Your dedicated account
-          </p>
-          <p className="mt-1 text-sm text-ink-600">
-            Transfer to this account to top up your wallet — funds reflect
-            in seconds.
-          </p>
+    <div className="fade-up space-y-5">
+      {/* Premium balance card */}
+      <div className="relative isolate overflow-hidden rounded-[2rem] bg-canvas-darker p-7 text-white shadow-luxe sm:p-9">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 opacity-95"
+          style={{
+            background:
+              "radial-gradient(34rem 22rem at 92% -10%, rgba(255,42,20,0.42), transparent 60%), radial-gradient(28rem 18rem at -10% 110%, rgba(255,107,74,0.20), transparent 60%)",
+          }}
+        />
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/55">
+              BiteExpress Wallet
+            </p>
+            <p className="mt-3 font-serif text-4xl tracking-[-0.015em] text-white sm:text-5xl">
+              ₦{balance !== null ? Math.round(balance).toLocaleString() : "—"}
+            </p>
+          </div>
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white backdrop-blur">
+            <WalletIcon size={20} strokeWidth={1.7} />
+          </span>
         </div>
-        <Landmark size={20} className="shrink-0 text-brand-red" />
+        <p className="mt-6 max-w-md text-sm leading-relaxed text-white/65">
+          Transfer to your dedicated account below to top up — funds reflect
+          in seconds and can be spent at checkout.
+        </p>
       </div>
 
-      <dl className="mt-5 space-y-3 text-sm">
-        <Row label={acc.bank_name_label || "Bank"} value={acc.bank_name} />
-        <Row label="Account name" value={acc.account_name} />
-        <div>
-          <dt className="text-ink-500">Account number</dt>
-          <dd className="mt-1 flex items-center gap-3">
-            <span className="font-mono text-2xl font-semibold tracking-wide text-ink-900">
-              {acc.account_number}
-            </span>
-            <button
-              type="button"
-              onClick={copy}
-              aria-label="Copy account number"
-              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 text-xs font-medium text-ink-900 hover:bg-ink-50"
-            >
-              {copied ? (
-                <>
-                  <Check size={12} className="text-success" /> Copied
-                </>
-              ) : (
-                <>
-                  <Copy size={12} /> Copy
-                </>
-              )}
-            </button>
-          </dd>
+      {/* DVA bank details */}
+      <Card>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-ink-500">
+              Top-up account
+            </p>
+            <p className="mt-1.5 font-serif text-xl tracking-[-0.012em] text-ink-900">
+              {acc.account_name}
+            </p>
+          </div>
+          <span
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-brand-red"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(255,107,74,0.18), rgba(222,22,0,0.06))",
+            }}
+          >
+            <Landmark size={20} />
+          </span>
         </div>
-      </dl>
-    </Card>
+
+        <dl className="mt-6 space-y-4 text-sm">
+          <Row label={acc.bank_name_label || "Bank"} value={acc.bank_name} />
+          <div>
+            <dt className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-500">
+              Account number
+            </dt>
+            <dd className="mt-2 flex items-center gap-3">
+              <span className="font-mono text-3xl font-semibold tracking-[0.04em] text-ink-900">
+                {acc.account_number}
+              </span>
+              <button
+                type="button"
+                onClick={copy}
+                aria-label="Copy account number"
+                className="inline-flex h-10 items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-3.5 text-xs font-medium text-ink-900 shadow-soft transition-all hover:-translate-y-px hover:border-brand-red/30 hover:text-brand-red"
+              >
+                {copied ? (
+                  <>
+                    <Check size={12} className="text-success" /> Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy size={12} /> Copy
+                  </>
+                )}
+              </button>
+            </dd>
+          </div>
+        </dl>
+      </Card>
+    </div>
   );
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-ink-500">{label}</dt>
-      <dd className="font-medium text-ink-900">{value}</dd>
+    <div>
+      <dt className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-500">
+        {label}
+      </dt>
+      <dd className="mt-1 text-base font-medium text-ink-900">{value}</dd>
     </div>
   );
 }
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
+    <div className="rounded-[2rem] border border-ink-200 bg-white p-7 shadow-card sm:p-9">
       {children}
     </div>
   );

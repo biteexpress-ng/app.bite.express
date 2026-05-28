@@ -22,13 +22,7 @@ import { useWishlist } from "@/lib/wishlist-store";
 import { Button } from "@/components/ui/button";
 
 /**
- * Profile read-only card + sign-out.
- *
- * Re-fetches /api/v1/customer/info on mount so we display the freshest
- * data (the locally-cached AuthUser may be stale if the user edited
- * their profile from the mobile app since their last visit).
- *
- * Mutating profile fields lives in the next slice.
+ * Premium profile card + sign-out + quick links.
  */
 export function ProfileCard() {
   const router = useRouter();
@@ -54,138 +48,92 @@ export function ProfileCard() {
   const user = cachedUser;
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
-        <div className="flex items-start gap-4">
-          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-100 text-ink-700">
+    <div className="fade-up space-y-5">
+      {/* Identity hero card */}
+      <div className="relative isolate overflow-hidden rounded-[2rem] border border-ink-900/95 bg-canvas-darker p-7 text-white shadow-luxe sm:p-9">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 opacity-90"
+          style={{
+            background:
+              "radial-gradient(36rem 22rem at 88% -10%, rgba(255,42,20,0.30), transparent 60%), radial-gradient(30rem 22rem at -10% 110%, rgba(255,107,74,0.20), transparent 60%)",
+          }}
+        />
+        <div className="flex items-start gap-5">
+          <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border-2 border-white/15 bg-white/5 text-white/90">
             {user?.image_full_url ? (
               <Image
                 src={user.image_full_url}
                 alt=""
                 fill
-                sizes="56px"
+                sizes="80px"
                 className="object-cover"
               />
             ) : (
-              <User2 size={22} strokeWidth={1.8} />
+              <User2 size={28} strokeWidth={1.6} />
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-medium text-ink-900">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/55">
+              {refreshing ? "Refreshing…" : "Signed in"}
+            </p>
+            <h2 className="mt-1 truncate font-serif text-2xl tracking-[-0.012em] sm:text-3xl">
               {user?.f_name
                 ? `${user.f_name}${user.l_name ? ` ${user.l_name}` : ""}`
                 : "Customer"}
             </h2>
-            <p className="mt-1 text-sm text-ink-500">
-              {refreshing ? "Refreshing…" : "Signed in"}
-            </p>
           </div>
           <Link
             href="/profile/edit"
-            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 px-3 text-xs font-medium text-ink-700 hover:bg-ink-50"
+            className="inline-flex h-10 items-center gap-1.5 rounded-pill border border-white/15 bg-white/10 px-3.5 text-xs font-medium text-white backdrop-blur transition-all hover:border-white/30 hover:bg-white/15"
           >
             <Pencil size={12} />
             Edit
           </Link>
         </div>
 
-        <dl className="mt-6 divide-y divide-ink-200/70 border-t border-ink-200/70 text-sm">
-          <Row icon={<Phone size={16} />} label="Phone" value={user?.phone} />
-          <Row icon={<Mail size={16} />} label="Email" value={user?.email} />
+        <dl className="mt-7 grid gap-3 sm:grid-cols-2">
+          <ContactRow icon={<Phone size={14} />} label="Phone" value={user?.phone} />
+          <ContactRow icon={<Mail size={14} />} label="Email" value={user?.email} />
         </dl>
       </div>
 
-      <Link
-        href="/wallet"
-        className="flex items-center justify-between gap-3 rounded-3xl border border-ink-200 bg-white p-5 shadow-soft transition-shadow hover:shadow-elevated"
-      >
-        <span className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
-            <Wallet size={18} />
-          </span>
-          <span>
-            <span className="block text-base font-medium text-ink-900">
-              Wallet
-            </span>
-            <span className="block text-xs text-ink-500">
-              See your dedicated account & balance
-            </span>
-          </span>
-        </span>
-        <ArrowRight size={16} className="text-ink-400" />
-      </Link>
-
-      <Link
-        href="/addresses"
-        className="flex items-center justify-between gap-3 rounded-3xl border border-ink-200 bg-white p-5 shadow-soft transition-shadow hover:shadow-elevated"
-      >
-        <span className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
-            <MapPin size={18} />
-          </span>
-          <span>
-            <span className="block text-base font-medium text-ink-900">
-              Saved addresses
-            </span>
-            <span className="block text-xs text-ink-500">
-              Add or edit the places you order to
-            </span>
-          </span>
-        </span>
-        <ArrowRight size={16} className="text-ink-400" />
-      </Link>
-
-      <Link
-        href="/wishlist"
-        className="flex items-center justify-between gap-3 rounded-3xl border border-ink-200 bg-white p-5 shadow-soft transition-shadow hover:shadow-elevated"
-      >
-        <span className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
-            <Heart size={18} />
-          </span>
-          <span>
-            <span className="block text-base font-medium text-ink-900">
-              Wishlist
-            </span>
-            <span className="block text-xs text-ink-500">
-              Favourited shops & items
-            </span>
-          </span>
-        </span>
-        <ArrowRight size={16} className="text-ink-400" />
-      </Link>
-
-      <Link
-        href="/profile/password"
-        className="flex items-center justify-between gap-3 rounded-3xl border border-ink-200 bg-white p-5 shadow-soft transition-shadow hover:shadow-elevated"
-      >
-        <span className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
-            <Lock size={18} />
-          </span>
-          <span>
-            <span className="block text-base font-medium text-ink-900">
-              Change password
-            </span>
-            <span className="block text-xs text-ink-500">
-              Pick a new password for sign-in
-            </span>
-          </span>
-        </span>
-        <ArrowRight size={16} className="text-ink-400" />
-      </Link>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Tile
+          href="/wallet"
+          icon={<Wallet size={18} />}
+          title="Wallet"
+          subtitle="Dedicated account & balance"
+        />
+        <Tile
+          href="/addresses"
+          icon={<MapPin size={18} />}
+          title="Saved addresses"
+          subtitle="Places you order to"
+        />
+        <Tile
+          href="/wishlist"
+          icon={<Heart size={18} />}
+          title="Wishlist"
+          subtitle="Favourited shops & items"
+        />
+        <Tile
+          href="/profile/password"
+          icon={<Lock size={18} />}
+          title="Change password"
+          subtitle="Pick a new sign-in password"
+        />
+      </div>
 
       <Button
         variant="outline"
         size="md"
         onClick={() => {
-          // Clear the per-user wishlist cache so the next signed-in
-          // user doesn't briefly see the previous customer's hearts
-          // flashed in before their own list hydrates.
           resetWishlist();
           signOut();
           router.replace("/");
         }}
+        className="w-full"
       >
         <LogOut size={16} />
         Sign out
@@ -194,7 +142,47 @@ export function ProfileCard() {
   );
 }
 
-function Row({
+function Tile({
+  href,
+  icon,
+  title,
+  subtitle,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="card-luxe group flex items-center justify-between gap-3 rounded-2xl p-5"
+    >
+      <span className="flex items-center gap-3">
+        <span
+          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-brand-red"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(255,107,74,0.18), rgba(222,22,0,0.06))",
+          }}
+        >
+          {icon}
+        </span>
+        <span>
+          <span className="block text-base font-semibold tracking-[-0.005em] text-ink-900">
+            {title}
+          </span>
+          <span className="mt-0.5 block text-xs text-ink-500">{subtitle}</span>
+        </span>
+      </span>
+      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-ink-200 bg-white text-ink-700 transition-all group-hover:border-brand-red/40 group-hover:bg-brand-red group-hover:text-white">
+        <ArrowRight size={14} />
+      </span>
+    </Link>
+  );
+}
+
+function ContactRow({
   icon,
   label,
   value,
@@ -204,10 +192,16 @@ function Row({
   value?: string | null;
 }) {
   return (
-    <div className="flex items-center gap-3 py-3">
-      <span className="text-ink-500">{icon}</span>
-      <dt className="w-20 text-ink-500">{label}</dt>
-      <dd className="flex-1 text-ink-900">{value || "—"}</dd>
+    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 backdrop-blur">
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/80">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-white/55">
+          {label}
+        </p>
+        <p className="truncate text-sm text-white">{value || "—"}</p>
+      </div>
     </div>
   );
 }

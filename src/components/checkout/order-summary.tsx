@@ -18,27 +18,35 @@ type Props = {
  */
 export function OrderSummary({ lines, subtotal }: Props) {
   return (
-    <div className="overflow-hidden rounded-3xl border border-ink-200 bg-white shadow-soft">
+    <div className="overflow-hidden rounded-3xl border border-ink-200 bg-white shadow-card">
+      <div className="border-b border-ink-200/70 px-5 pt-5 pb-3">
+        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-ink-500">
+          Order summary
+        </p>
+      </div>
       <ul className="divide-y divide-ink-200/70">
         {lines.map((l) => (
           <li key={l.key} className="flex items-center gap-3 p-4">
-            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-ink-100">
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-canvas-sunken">
               {l.imageUrl && (
                 <Image
                   src={l.imageUrl}
                   alt=""
                   fill
-                  sizes="48px"
+                  sizes="56px"
                   className="object-cover"
                 />
               )}
+              <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ink-900 px-1 text-[0.65rem] font-semibold text-white">
+                {l.qty}
+              </span>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-1 text-sm font-medium text-ink-900">
-                {l.qty} × {l.name}
+              <p className="line-clamp-1 text-sm font-semibold tracking-[-0.005em] text-ink-900">
+                {l.name}
               </p>
               {l.selections.length > 0 && (
-                <p className="line-clamp-1 text-xs text-ink-500">
+                <p className="mt-0.5 line-clamp-1 text-xs text-ink-500">
                   {selectionsSummary(l.selections)}
                 </p>
               )}
@@ -51,23 +59,25 @@ export function OrderSummary({ lines, subtotal }: Props) {
                 </p>
               )}
             </div>
-            <span className="shrink-0 text-sm font-medium text-ink-900">
+            <span className="shrink-0 text-sm font-semibold text-ink-900">
               ₦{Math.round(l.unitPrice * l.qty).toLocaleString()}
             </span>
           </li>
         ))}
       </ul>
 
-      <dl className="space-y-2 border-t border-ink-200/70 bg-ink-50 p-4 text-sm">
+      <dl className="space-y-2.5 border-t border-ink-200/70 bg-canvas-sunken/50 p-5 text-sm">
         <div className="flex items-center justify-between text-ink-700">
           <dt>Subtotal</dt>
-          <dd>₦{Math.round(subtotal).toLocaleString()}</dd>
+          <dd className="font-medium text-ink-900">
+            ₦{Math.round(subtotal).toLocaleString()}
+          </dd>
         </div>
         <div className="flex items-center justify-between text-ink-500">
           <dt>Delivery & fees</dt>
           <dd>Calculated by your rider</dd>
         </div>
-        <div className="flex items-center justify-between border-t border-ink-200/70 pt-2 text-base font-medium text-ink-900">
+        <div className="flex items-center justify-between border-t border-ink-200/70 pt-3 text-base font-semibold text-ink-900">
           <dt>Total to confirm</dt>
           <dd>₦{Math.round(subtotal).toLocaleString()}+</dd>
         </div>

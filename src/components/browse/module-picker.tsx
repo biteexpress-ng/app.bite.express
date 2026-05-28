@@ -65,7 +65,7 @@ export function ModulePicker() {
   if (state.kind === "loading") return <CenterSpinner label="Loading shops…" />;
   if (state.kind === "error") {
     return (
-      <div className="mx-auto max-w-md rounded-2xl border border-ink-200 bg-white p-6 text-center shadow-soft">
+      <div className="mx-auto max-w-md rounded-2xl border border-ink-200 bg-white p-6 text-center shadow-card">
         <p className="text-ink-900">{state.message}</p>
       </div>
     );
@@ -80,7 +80,7 @@ export function ModulePicker() {
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="fade-up grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {state.modules.map((m) => (
         <ModuleCard key={m.id} module={m} />
       ))}
@@ -94,41 +94,48 @@ function ModuleCard({ module: m }: { module: Module }) {
   return (
     <Link
       href={`/browse/${m.id}`}
-      className="group flex flex-col overflow-hidden rounded-3xl border border-ink-200 bg-white shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-elevated"
+      className="card-luxe group relative flex flex-col overflow-hidden rounded-3xl"
     >
-      <div className="relative aspect-[16/9] w-full overflow-hidden bg-ink-100">
+      <div className="relative aspect-[16/10] w-full overflow-hidden bg-canvas-sunken">
         {m.thumbnail_full_url ? (
           <Image
             src={m.thumbnail_full_url}
             alt={m.module_name}
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-            className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
           />
         ) : null}
-      </div>
-      <div className="flex flex-1 flex-col p-5">
-        <div className="flex items-start gap-3">
-          {m.icon_full_url && (
+        <div className="image-scrim absolute inset-0" />
+        {m.icon_full_url && (
+          <div className="absolute left-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/95 shadow-card backdrop-blur">
             <Image
               src={m.icon_full_url}
               alt=""
-              width={36}
-              height={36}
-              className="h-9 w-9 rounded-md object-contain"
+              width={28}
+              height={28}
+              className="h-7 w-7 object-contain"
             />
-          )}
-          <div className="flex-1">
-            <h3 className="text-lg font-medium text-ink-900">{m.module_name}</h3>
-            <p className="mt-0.5 text-xs text-ink-500">
-              {hasStores ? `${count} shops` : "No shops yet"}
-            </p>
           </div>
-          <ArrowRight
-            size={18}
-            className="mt-1 text-ink-400 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-red"
-          />
+        )}
+        {hasStores && (
+          <span className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-pill bg-black/55 px-2.5 py-1 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-white backdrop-blur">
+            {count} shops
+          </span>
+        )}
+      </div>
+      <div className="flex flex-1 items-center justify-between gap-4 p-5">
+        <div className="min-w-0">
+          <h3 className="truncate text-lg font-medium tracking-[-0.005em] text-ink-900">
+            {m.module_name}
+          </h3>
+          <p className="mt-0.5 text-xs text-ink-500">
+            {hasStores ? `Explore ${count} shops` : "Coming soon"}
+          </p>
         </div>
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-ink-200 bg-white text-ink-700 transition-all group-hover:border-brand-red/40 group-hover:bg-brand-red group-hover:text-white">
+          <ArrowRight size={16} strokeWidth={2.1} />
+        </span>
       </div>
     </Link>
   );
