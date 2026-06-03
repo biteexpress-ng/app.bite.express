@@ -27,9 +27,9 @@ export const siteConfig = {
     whatsapp: "https://wa.me/2349123051662",
   },
   appStore: {
-    ios: "https://apps.apple.com/app/biteexpress/id000000000",
+    ios: "https://apps.apple.com/ng/app/biteexpress/id6466211766",
     android:
-      "https://play.google.com/store/apps/details?id=com.biteexpress.user",
+      "https://play.google.com/store/apps/details?id=com.biteexpress.biteexpress",
   },
 } as const;
 
