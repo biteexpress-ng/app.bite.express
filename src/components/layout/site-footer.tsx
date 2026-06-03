@@ -16,6 +16,8 @@ import {
  * Dark obsidian band that grounds the page, with refined neon-tinted
  * accents. Two-tier layout: top row for brand + escape hatches,
  * lower row for legal + locale.
+ *
+ * Social links mirror biteexpress-web's footer — keep the two in sync.
  */
 export function SiteFooter() {
   const year = new Date().getFullYear();
