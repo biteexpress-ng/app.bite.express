@@ -2,6 +2,13 @@ import Link from "next/link";
 import { Container } from "@/components/ui/container";
 import { siteConfig } from "@/lib/site-config";
 import { Logo } from "@/components/brand/logo";
+import {
+  FacebookIcon,
+  InstagramIcon,
+  LinkedInIcon,
+  WhatsAppIcon,
+  XIcon,
+} from "@/components/brand/social-icons";
 
 /**
  * Premium customer-app footer.
@@ -30,13 +37,19 @@ export function SiteFooter() {
           </p>
           <div className="flex items-center gap-3 pt-1">
             <SocialLink href={siteConfig.social.instagram} label="Instagram">
-              IG
-            </SocialLink>
-            <SocialLink href={siteConfig.social.twitter} label="X / Twitter">
-              X
+              <InstagramIcon size={16} />
             </SocialLink>
             <SocialLink href={siteConfig.social.facebook} label="Facebook">
-              f
+              <FacebookIcon size={16} />
+            </SocialLink>
+            <SocialLink href={siteConfig.social.twitter} label="X / Twitter">
+              <XIcon size={16} />
+            </SocialLink>
+            <SocialLink href={siteConfig.social.linkedin} label="LinkedIn">
+              <LinkedInIcon size={16} />
+            </SocialLink>
+            <SocialLink href={siteConfig.social.whatsapp} label="WhatsApp">
+              <WhatsAppIcon size={16} />
             </SocialLink>
           </div>
         </div>

@@ -19,9 +19,12 @@ export const siteConfig = {
   supportEmail: "support@bite.express",
   phone: "+234 800 BITE EXP",
   social: {
+    facebook: "https://web.facebook.com/biteexpressapp",
     twitter: "https://twitter.com/biteexpress",
-    instagram: "https://instagram.com/biteexpress",
-    facebook: "https://facebook.com/biteexpress",
+    instagram: "https://instagram.com/biteexpressng",
+    linkedin: "https://www.linkedin.com/showcase/biteexpress/",
+    youtube: "https://www.youtube.com/@BiteExpressApp",
+    whatsapp: "https://wa.me/2349123051662",
   },
   appStore: {
     ios: "https://apps.apple.com/app/biteexpress/id000000000",
