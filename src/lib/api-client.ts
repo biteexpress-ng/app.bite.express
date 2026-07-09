@@ -114,16 +114,20 @@ export async function api<T>(
     }
 
     if (!res.ok) {
-      let message = res.statusText;
+      // NOTE: `res.statusText` is ALWAYS "" over HTTP/2 (and HTTP/3),
+      // which is how Cloudflare serves this API to browsers — there's
+      // no reason-phrase in the protocol. So it can never be trusted
+      // as a fallback message; we only use it if it's actually present.
+      let message = "";
       let errors: Record<string, string[]> | undefined;
       try {
         const errBody = (await res.json()) as {
           message?: string;
           errors?:
+            | string
             | Record<string, string[]>
             | Array<{ code?: string; message?: string }>;
         };
-        if (errBody.message) message = errBody.message;
         if (Array.isArray(errBody.errors)) {
           // Laravel Helpers::error_processor returns [{code, message}].
           // Promote into both the top-level `message` AND a Record
@@ -138,11 +142,33 @@ export async function api<T>(
             }
           }
           if (Object.keys(map).length > 0) errors = map;
-        } else if (errBody.errors) {
+        } else if (typeof errBody.errors === "string") {
+          // The auth / zone / module middleware returns a bare string,
+          // e.g. {"errors":"Unauthorized"}. Without this branch the
+          // message stayed empty and the UI showed a blank red toast.
+          message = errBody.errors;
+        } else if (errBody.errors && typeof errBody.errors === "object") {
+          // Laravel's default validation shape: {field: ["msg", ...]}.
           errors = errBody.errors;
+          const firstField = Object.values(errBody.errors)[0];
+          if (Array.isArray(firstField) && firstField[0]) {
+            message = firstField[0];
+          }
         }
+        // A top-level `message` (Laravel exceptions / abort()) wins only
+        // when we haven't already found something more specific above.
+        if (!message && errBody.message) message = errBody.message;
       } catch {
-        /* response wasn't JSON — keep statusText */
+        /* response wasn't JSON (HTML error page, empty body, etc.) */
+      }
+      // Never surface an empty message — it renders as a contentless
+      // toast. Fall back to statusText when the protocol provides one,
+      // otherwise a human-readable line that still carries the status
+      // code for support/diagnosis.
+      if (!message) {
+        message =
+          res.statusText ||
+          `Something went wrong (error ${res.status}). Please try again.`;
       }
       return { ok: false, status: res.status, message, errors };
     }

@@ -263,6 +263,15 @@ export async function placeOrder(
     item_id: l.itemId,
     item_type: "App\\Models\\Item",
     quantity: l.qty,
+    // `variant` is the legacy single-variant string. This app only
+    // uses the modern food_variations system (`variation` below), so
+    // there's never a legacy variant — but the key must still be
+    // present: makeOrderDetails does a bare json_encode($c['variant'])
+    // at PlaceNewOrder.php:1175. Omitting it throws "Undefined array
+    // key variant" (PHP 8), which the controller catches and returns
+    // as a 403 — the real cause of checkout failing on the web app.
+    // The Flutter app sends "" here for food-variation items too.
+    variant: "",
     variation: toWireVariation(l.selections),
     add_on_ids: l.addOns.map((a) => a.id),
     add_on_qtys: l.addOns.map((a) => a.qty),
