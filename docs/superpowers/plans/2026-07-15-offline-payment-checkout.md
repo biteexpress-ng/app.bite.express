@@ -844,11 +844,66 @@ which eager-loads offline_payments and then ignores it."
 ### Task 6: Payment picker option and bank chooser
 
 **Files:**
+- Create: `src/components/checkout/bank-chips.tsx`
 - Modify: `src/components/checkout/payment-picker.tsx`
 
 **Interfaces:**
 - Consumes: `type OfflinePaymentMethod` from `@/lib/offline-payment-rules`
-- Produces: `PaymentMethod` union gains `"offline_payment"`; `PaymentPicker` gains props `offlineEnabled?: boolean`, `offlineMethods?: OfflinePaymentMethod[]`, `offlineMethodId?: number | null`, `onOfflineMethodChange?: (id: number) => void`
+- Produces:
+  - `BankChips({ methods, selectedId, onSelect }: { methods: OfflinePaymentMethod[]; selectedId: number | null; onSelect: (id: number) => void })` from `@/components/checkout/bank-chips` — **also consumed by Task 8**
+  - `PaymentMethod` union gains `"offline_payment"`; `PaymentPicker` gains props `offlineEnabled?: boolean`, `offlineMethods?: OfflinePaymentMethod[]`, `offlineMethodId?: number | null`, `onOfflineMethodChange?: (id: number) => void`
+
+- [ ] **Step 0: Create the shared bank chip list**
+
+Both this task's picker and Task 8's offline page let the customer choose a bank. The surrounding wrapper and heading differ per surface, but the chips themselves are the same control and must not drift apart. Create `src/components/checkout/bank-chips.tsx`:
+
+```tsx
+"use client";
+
+import { cn } from "@/lib/cn";
+import type { OfflinePaymentMethod } from "@/lib/offline-payment-rules";
+
+/**
+ * The bank/method chips for offline payment. Rendered in two places:
+ * the checkout picker (choose before placing) and
+ * /checkout/offline/[orderId] (change before submitting). Each caller
+ * supplies its own wrapper and heading; only the control lives here so
+ * the two can't drift apart.
+ */
+export function BankChips({
+  methods,
+  selectedId,
+  onSelect,
+}: {
+  methods: OfflinePaymentMethod[];
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {methods.map((m) => {
+        const checked = m.id === selectedId;
+        return (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onSelect(m.id)}
+            aria-pressed={checked}
+            className={cn(
+              "rounded-pill border px-4 py-2 text-xs font-medium transition-colors",
+              checked
+                ? "border-brand-red bg-brand-red text-white"
+                : "border-ink-200 bg-white text-ink-700 hover:border-brand-red/40",
+            )}
+          >
+            {m.method_name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+```
 
 - [ ] **Step 1: Extend the type union and imports**
 
@@ -868,6 +923,7 @@ Add below the `cn` import:
 
 ```tsx
 import type { OfflinePaymentMethod } from "@/lib/offline-payment-rules";
+import { BankChips } from "@/components/checkout/bank-chips";
 ```
 
 Replace lines 12-16:
@@ -1030,26 +1086,8 @@ function BankChooser({
       <p className="text-xs font-medium uppercase tracking-wider text-ink-500">
         Which bank will you transfer to?
       </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {methods.map((m) => {
-          const checked = m.id === selectedId;
-          return (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onSelect(m.id)}
-              aria-pressed={checked}
-              className={cn(
-                "rounded-pill border px-4 py-2 text-xs font-medium transition-colors",
-                checked
-                  ? "border-brand-red bg-brand-red text-white"
-                  : "border-ink-200 bg-white text-ink-700 hover:border-brand-red/40",
-              )}
-            >
-              {m.method_name}
-            </button>
-          );
-        })}
+      <div className="mt-3">
+        <BankChips methods={methods} selectedId={selectedId} onSelect={onSelect} />
       </div>
     </div>
   );
@@ -1247,7 +1285,7 @@ The largest task. Creates the route and the component that shows the account, th
 - Create: `src/components/checkout/offline-payment-form.tsx`
 
 **Interfaces:**
-- Consumes: `fetchOrderTrack`, `type OfflinePaymentBlock` from `@/lib/api/orders`; `fetchOfflineMethods`, `submitOfflinePayment`, `updateOfflinePayment` from `@/lib/api/offline-payment`; `validateOfflineForm`, `type OfflinePaymentMethod` from `@/lib/offline-payment-rules`
+- Consumes: `fetchOrderTrack`, `type OfflinePaymentBlock` from `@/lib/api/orders`; `fetchOfflineMethods`, `submitOfflinePayment`, `updateOfflinePayment` from `@/lib/api/offline-payment`; `validateOfflineForm`, `type OfflinePaymentMethod` from `@/lib/offline-payment-rules`; `BankChips` from `@/components/checkout/bank-chips` (created in Task 6)
 - Produces: route `/checkout/offline/[orderId]?method=<id>`
 
 - [ ] **Step 1: Create the server page**
@@ -1315,6 +1353,7 @@ import {
   validateOfflineForm,
   type OfflinePaymentMethod,
 } from "@/lib/offline-payment-rules";
+import { BankChips } from "@/components/checkout/bank-chips";
 import { cn } from "@/lib/cn";
 
 type LoadState =
@@ -1661,26 +1700,8 @@ function BankSwitcher({
       <p className="text-xs font-medium uppercase tracking-wider text-ink-500">
         Paying to a different bank?
       </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {methods.map((m) => {
-          const checked = m.id === selectedId;
-          return (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onSelect(m.id)}
-              aria-pressed={checked}
-              className={cn(
-                "rounded-pill border px-4 py-2 text-xs font-medium transition-colors",
-                checked
-                  ? "border-brand-red bg-brand-red text-white"
-                  : "border-ink-200 bg-white text-ink-700 hover:border-brand-red/40",
-              )}
-            >
-              {m.method_name}
-            </button>
-          );
-        })}
+      <div className="mt-3">
+        <BankChips methods={methods} selectedId={selectedId} onSelect={onSelect} />
       </div>
     </div>
   );
