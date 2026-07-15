@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { ArrowRight, Check, Copy, Landmark, Loader2 } from "lucide-react";
 import { fetchOrderTrack, type OfflinePaymentBlock } from "@/lib/api/orders";
 import {
@@ -133,6 +134,13 @@ export function OfflinePaymentForm({ orderId }: { orderId: number }) {
 
   const isEdit = load.kind === "ready" && load.existing !== null;
   const denied = load.kind === "ready" && load.existing?.data?.status === "denied";
+  // The backend's update_offline_payment_info sets status back to 'pending'
+  // unconditionally, with no guard against re-submitting an already-verified
+  // payment (OrderController.php:574). This client-side check is the only
+  // thing standing between a stale bookmark / back-navigation and a
+  // reconciled order being silently reopened in the admin's verification
+  // queue, so it must gate the form, the switcher, and the submit button.
+  const verified = load.kind === "ready" && load.existing?.data?.status === "verified";
 
   const amountText =
     load.kind === "ready" && typeof load.amount === "number"
@@ -227,7 +235,47 @@ export function OfflinePaymentForm({ orderId }: { orderId: number }) {
         </div>
       )}
 
-      {!isEdit && load.methods.length > 1 && (
+      {verified && (
+        <div className="rounded-2xl border border-success/30 bg-success/5 p-4">
+          <p className="text-sm font-medium text-ink-900">
+            This payment is already confirmed
+          </p>
+          <p className="mt-1 text-xs text-ink-600">
+            We&apos;ve matched your transfer and your order is being taken
+            care of. There&apos;s nothing more to do here.
+          </p>
+          <Link
+            href={`/orders/${orderId}`}
+            className="mt-3 inline-flex h-10 items-center justify-center rounded-full border border-ink-200 bg-white px-4 text-sm font-medium text-ink-900 hover:bg-ink-50"
+          >
+            View your order
+          </Link>
+        </div>
+      )}
+
+      {/*
+       * Edit mode only: the stored method_id no longer resolves against
+       * the active-methods list (GET /offline_payment_method_list filters
+       * status=1 — ConfigController.php:1078). This happens when an admin
+       * deactivates a bank after the customer paid into it, most commonly
+       * right after a denial. Unreachable in create mode: the initial
+       * method there always comes from the live list, and the component
+       * already errors out earlier when that list is empty.
+       */}
+      {!verified && methodId !== null && method === null && (
+        <div className="rounded-2xl border border-error/30 bg-error/5 p-4">
+          <p className="text-sm font-medium text-error">
+            That bank is no longer available
+          </p>
+          <p className="mt-1 text-xs text-ink-700">
+            The account you paid into has been retired, so we can&apos;t take
+            an update against it here. Please contact support and we&apos;ll
+            sort this order out with you.
+          </p>
+        </div>
+      )}
+
+      {!verified && !isEdit && load.methods.length > 1 && (
         <BankSwitcher
           methods={load.methods}
           selectedId={methodId}
@@ -241,9 +289,11 @@ export function OfflinePaymentForm({ orderId }: { orderId: number }) {
         />
       )}
 
-      {method && <AccountCard method={method} amountText={amountText} />}
+      {!verified && method && (
+        <AccountCard method={method} amountText={amountText} />
+      )}
 
-      {method && (
+      {!verified && method && (
         <div className="rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
           <p className="text-sm font-medium text-ink-900">Your payment details</p>
           <p className="mt-1 text-xs text-ink-600">
