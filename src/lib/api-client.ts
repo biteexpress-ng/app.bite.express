@@ -55,6 +55,73 @@ function publicOrigin(): string {
   );
 }
 
+type ErrorBody = {
+  message?: string;
+  /** Offline-payment endpoints return {"payment": "<exception message>"}
+   *  on failure (OrderController.php:470-540). It carries no `errors`
+   *  key and no top-level `message`, so without an explicit branch it
+   *  would fall through to the generic "Something went wrong" text and
+   *  the real reason would be lost. */
+  payment?: string;
+  errors?:
+    | string
+    | Record<string, string[]>
+    | Array<{ code?: string; message?: string }>;
+};
+
+export type ParsedError = {
+  message: string;
+  errors?: Record<string, string[]>;
+};
+
+/**
+ * Normalise Laravel's four different error-body shapes into one result.
+ * Extracted from `api()` so it can be unit-tested without mocking fetch.
+ * Returns an empty message when nothing usable is present; the caller
+ * is responsible for the final fallback.
+ */
+export function parseErrorBody(errBody: ErrorBody): ParsedError {
+  let message = "";
+  let errors: Record<string, string[]> | undefined;
+
+  if (Array.isArray(errBody.errors)) {
+    // Laravel Helpers::error_processor returns [{code, message}].
+    // Promote into both the top-level `message` AND a Record so
+    // field-level UIs can highlight the offending input.
+    const first = errBody.errors[0]?.message;
+    if (first) message = first;
+    const map: Record<string, string[]> = {};
+    for (const e of errBody.errors) {
+      if (e.code && e.message) {
+        if (!map[e.code]) map[e.code] = [];
+        map[e.code].push(e.message);
+      }
+    }
+    if (Object.keys(map).length > 0) errors = map;
+  } else if (typeof errBody.errors === "string") {
+    // The auth / zone / module middleware returns a bare string,
+    // e.g. {"errors":"Unauthorized"}. Without this branch the
+    // message stayed empty and the UI showed a blank red toast.
+    message = errBody.errors;
+  } else if (errBody.errors && typeof errBody.errors === "object") {
+    // Laravel's default validation shape: {field: ["msg", ...]}.
+    errors = errBody.errors;
+    const firstField = Object.values(errBody.errors)[0];
+    if (Array.isArray(firstField) && firstField[0]) {
+      message = firstField[0];
+    }
+  }
+
+  // A top-level `message` (Laravel exceptions / abort()) wins only
+  // when we haven't already found something more specific above.
+  if (!message && errBody.message) message = errBody.message;
+
+  // Same rule for the offline-payment exception shape.
+  if (!message && typeof errBody.payment === "string") message = errBody.payment;
+
+  return { message, errors };
+}
+
 export async function api<T>(
   path: string,
   opts: RequestOpts = {},
@@ -121,43 +188,9 @@ export async function api<T>(
       let message = "";
       let errors: Record<string, string[]> | undefined;
       try {
-        const errBody = (await res.json()) as {
-          message?: string;
-          errors?:
-            | string
-            | Record<string, string[]>
-            | Array<{ code?: string; message?: string }>;
-        };
-        if (Array.isArray(errBody.errors)) {
-          // Laravel Helpers::error_processor returns [{code, message}].
-          // Promote into both the top-level `message` AND a Record
-          // so field-level UIs can highlight the offending input.
-          const first = errBody.errors[0]?.message;
-          if (first) message = first;
-          const map: Record<string, string[]> = {};
-          for (const e of errBody.errors) {
-            if (e.code && e.message) {
-              if (!map[e.code]) map[e.code] = [];
-              map[e.code].push(e.message);
-            }
-          }
-          if (Object.keys(map).length > 0) errors = map;
-        } else if (typeof errBody.errors === "string") {
-          // The auth / zone / module middleware returns a bare string,
-          // e.g. {"errors":"Unauthorized"}. Without this branch the
-          // message stayed empty and the UI showed a blank red toast.
-          message = errBody.errors;
-        } else if (errBody.errors && typeof errBody.errors === "object") {
-          // Laravel's default validation shape: {field: ["msg", ...]}.
-          errors = errBody.errors;
-          const firstField = Object.values(errBody.errors)[0];
-          if (Array.isArray(firstField) && firstField[0]) {
-            message = firstField[0];
-          }
-        }
-        // A top-level `message` (Laravel exceptions / abort()) wins only
-        // when we haven't already found something more specific above.
-        if (!message && errBody.message) message = errBody.message;
+        const parsed = parseErrorBody((await res.json()) as ErrorBody);
+        message = parsed.message;
+        errors = parsed.errors;
       } catch {
         /* response wasn't JSON (HTML error page, empty body, etc.) */
       }
