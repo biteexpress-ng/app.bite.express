@@ -148,8 +148,36 @@ export type OrderTimeline = {
   created_at: string;
 };
 
+/**
+ * Emitted by track_order (OrderController.php:74) via
+ * Helpers::offline_payment_formater (Helpers.php:3300-3332).
+ *
+ * NOT available on /customer/order/details. That endpoint eager-loads
+ * `offline_payments` and then never uses it — it returns
+ * order_details_data_formatting($details), an array of line items. Use
+ * fetchOrderTrack for anything offline-payment related.
+ */
+export type OfflinePaymentBlock = {
+  /** The customer's submitted values, with method_id/method_name
+   *  lifted out into `data`. */
+  input?: Array<{ user_input: string; user_data: string }>;
+  data?: {
+    /** pending | verified | denied. Distinct from order.payment_status,
+     *  which stays "unpaid" until an admin verifies. */
+    status?: "pending" | "verified" | "denied";
+    method_id?: number;
+    method_name?: string;
+    customer_note?: string | null;
+    /** The admin's reason when status is "denied" (DB column `note`). */
+    admin_note?: string | null;
+  };
+  /** Snapshot of the destination account taken at submit time. */
+  method_fields?: Array<{ input_name: string; input_data: string }>;
+};
+
 export type OrderTrack = OrderSummary & {
   timelines?: OrderTimeline[];
+  offline_payment?: OfflinePaymentBlock | null;
 };
 
 export type OrderTrackResult =
