@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   Bike,
   Clock,
@@ -15,6 +16,7 @@ import {
 import {
   fetchOrderDetailLines,
   fetchOrderTrack,
+  type OfflinePaymentBlock,
   type OrderDetailLine,
   type OrderStatus,
   type OrderTrack,
@@ -394,6 +396,11 @@ function TotalsCard({ order }: { order: OrderTrack }) {
           </dd>
         </div>
       </dl>
+      {order.offline_payment && (
+        <div className="mt-4">
+          <OfflinePaymentPanel orderId={order.id} block={order.offline_payment} />
+        </div>
+      )}
     </CardLite>
   );
 }
@@ -492,4 +499,75 @@ function parseLatLng(
   if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return null;
   if (nLat === 0 && nLng === 0) return null;
   return { lat: nLat, lng: nLng };
+}
+
+/**
+ * Offline payment state, from order.offline_payment (emitted by
+ * track_order, OrderController.php:74).
+ *
+ * "denied" is a normal outcome of manual verification, not an edge
+ * case: the admin rejects a payment they can't match and the customer
+ * has to correct it. So the CTA here must actually work. The DVA
+ * transfer flow tells customers to "tap Confirm transfer again" on this
+ * page and no such button exists — don't repeat that.
+ */
+function OfflinePaymentPanel({
+  orderId,
+  block,
+}: {
+  orderId: number;
+  block: OfflinePaymentBlock;
+}) {
+  const status = block.data?.status;
+  if (!status) return null;
+
+  if (status === "verified") {
+    return (
+      <div className="rounded-2xl border border-success/30 bg-success/5 p-4">
+        <p className="text-sm font-medium text-ink-900">Transfer confirmed</p>
+        <p className="mt-1 text-xs text-ink-600">
+          We matched your payment{" "}
+          {block.data?.method_name ? `from ${block.data.method_name}` : ""} and
+          your order is on its way.
+        </p>
+      </div>
+    );
+  }
+
+  if (status === "denied") {
+    return (
+      <div className="rounded-2xl border border-error/30 bg-error/5 p-4">
+        <p className="text-sm font-medium text-error">
+          We couldn&apos;t confirm your payment
+        </p>
+        {block.data?.admin_note && (
+          <p className="mt-1 text-xs text-ink-700">{block.data.admin_note}</p>
+        )}
+        <Link
+          href={`/checkout/offline/${orderId}`}
+          className="mt-3 inline-flex h-10 items-center justify-center rounded-full bg-brand-red px-4 text-sm font-medium text-white hover:bg-brand-red-600"
+        >
+          Update payment details
+        </Link>
+      </div>
+    );
+  }
+
+  // pending
+  return (
+    <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4">
+      <p className="text-sm font-medium text-ink-900">
+        Waiting for us to confirm your transfer
+      </p>
+      <p className="mt-1 text-xs text-ink-600">
+        We check transfers by hand, usually within a few minutes.
+      </p>
+      <Link
+        href={`/checkout/offline/${orderId}`}
+        className="mt-3 inline-flex h-10 items-center justify-center rounded-full border border-ink-200 bg-white px-4 text-sm font-medium text-ink-900 hover:bg-ink-50"
+      >
+        Edit payment details
+      </Link>
+    </div>
+  );
 }
