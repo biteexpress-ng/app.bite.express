@@ -18,6 +18,12 @@ import { checkZone } from "@/lib/api/zones";
 import { payWithPaystack } from "@/lib/paystack";
 import { distanceKm } from "@/lib/geo";
 import { toast } from "@/lib/toast";
+import { fetchConfig } from "@/lib/api/config";
+import { fetchOfflineMethods } from "@/lib/api/offline-payment";
+import {
+  canUseOfflinePayment,
+  type OfflinePaymentMethod,
+} from "@/lib/offline-payment-rules";
 import { OrderSummary } from "./order-summary";
 import { PaymentPicker, type PaymentMethod } from "./payment-picker";
 import {
@@ -67,6 +73,13 @@ export function CheckoutFlow() {
   const [payment, setPayment] = useState<PaymentMethod>("cash_on_delivery");
   const [tip, setTip] = useState(0);
 
+  // Offline payment gating. Resolved on mount from three independent
+  // sources (see canUseOfflinePayment). Defaults to false so the option
+  // never flashes in before we know it's usable.
+  const [offlineEnabled, setOfflineEnabled] = useState(false);
+  const [offlineMethods, setOfflineMethods] = useState<OfflinePaymentMethod[]>([]);
+  const [offlineMethodId, setOfflineMethodId] = useState<number | null>(null);
+
   // Refresh wallet_balance whenever the page mounts so the
   // PaymentPicker shows the freshest number (the cached AuthUser
   // can lag behind any top-up done on /wallet a moment ago).
@@ -109,6 +122,57 @@ export function CheckoutFlow() {
       }
     });
   }, [cartHydrated, locHydrated, authHydrated, cartStoreId, stored?.lat, stored?.lng]);
+
+  // Resolve whether Pay Offline can be offered. Three gates, only one
+  // of which the backend enforces:
+  //   1. config.offline_payment_status  — enforced (PlaceNewOrder:681)
+  //   2. zone.offline_payment           — advisory, but the Flutter app
+  //      honours it, so we must too or the clients disagree
+  //   3. a non-empty method list        — nothing to pay into otherwise
+  //
+  // The zone flag is read with .some(): a point can fall inside several
+  // zone polygons, and since the backend doesn't enforce this at all,
+  // "any eligible zone allows it" is the permissive-but-consistent read.
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+
+    (async () => {
+      const [cfg, methodsRes, zoneRes] = await Promise.all([
+        fetchConfig(),
+        fetchOfflineMethods(),
+        checkZone(address.lat, address.lng),
+      ]);
+      if (cancelled) return;
+
+      const methods = methodsRes.ok ? methodsRes.methods : [];
+      const zoneOffline =
+        zoneRes.kind === "in-zone"
+          ? zoneRes.zones.some((z) => Boolean(z.offline_payment))
+          : false;
+
+      const enabled = canUseOfflinePayment({
+        offlinePaymentStatus: cfg.ok ? cfg.config.offline_payment_status : 0,
+        zoneOfflinePayment: zoneOffline,
+        methods,
+      });
+
+      setOfflineEnabled(enabled);
+      setOfflineMethods(methods);
+      setOfflineMethodId(enabled && methods.length > 0 ? methods[0].id : null);
+
+      // If the customer had Pay Offline selected and it just became
+      // unavailable (address change), fall back rather than leave an
+      // invisible selection armed.
+      if (!enabled) {
+        setPayment((p) => (p === "offline_payment" ? "cash_on_delivery" : p));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [address?.lat, address?.lng]);
 
   if (!cartHydrated || !locHydrated || !authHydrated || phase.kind === "hydrating") {
     return <CenterSpinner label="Loading checkout…" />;
@@ -221,6 +285,22 @@ export function CheckoutFlow() {
     if (payment === "cash_on_delivery") {
       clear();
       router.replace(`/checkout/success?order_id=${res.orderId}`);
+      return;
+    }
+
+    // Offline payment. The order exists but is NOT real yet: /order/place
+    // created it at order_status='failed' (PlaceNewOrder.php:173-179) and
+    // only the PUT /offline-payment flips it to 'pending'
+    // (OrderController.php:515-516). If the customer never completes that
+    // second call the order is stranded AND invisible, because
+    // Order::scopeFailed hides failed orders that have no offline_payments
+    // row (Order.php:260). So send them straight there and don't stop.
+    if (payment === "offline_payment") {
+      clear();
+      router.replace(
+        `/checkout/offline/${res.orderId}` +
+          (offlineMethodId ? `?method=${offlineMethodId}` : ""),
+      );
       return;
     }
 
@@ -341,6 +421,10 @@ export function CheckoutFlow() {
             onChange={setPayment}
             walletBalance={user?.wallet_balance ?? null}
             orderTotal={subtotal}
+            offlineEnabled={offlineEnabled}
+            offlineMethods={offlineMethods}
+            offlineMethodId={offlineMethodId}
+            onOfflineMethodChange={setOfflineMethodId}
           />
         </CheckoutSection>
 
