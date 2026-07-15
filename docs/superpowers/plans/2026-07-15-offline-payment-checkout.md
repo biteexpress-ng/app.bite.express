@@ -1956,30 +1956,28 @@ Confirm `NEXT_PUBLIC_API_BASE_URL` points at a backend where offline payment is 
 
 Set `offline_payment_status` to `0` in admin, hard-reload `/checkout`, and confirm Pay Offline disappears. Set it back.
 
-- [ ] **Step 4: Push and open a PR**
+- [ ] **Step 4: Push to main**
+
+This repo works on `main` only, by the owner's explicit instruction. There is no branch and no PR gate.
+
+**Push exactly once, here, and only after Steps 1-3 have all passed.** A push to `main` triggers an immediate Vercel production deploy of app.bite.express. Pushing intermediate commits would put half-built checkout code in front of live customers, which matters more than usual right now because a bulk email announcing this feature is going to roughly 4,300 customers.
 
 ```bash
-git push -u origin feat/offline-payment-checkout
-gh pr create --title "Offline payment at web checkout" --body "$(cat <<'EOF'
-Brings app.bite.express to parity with the Flutter app and WhatsApp ordering, which already run offline payment in production. Customers can now pay by bank transfer instead of card.
+git log --oneline origin/main..HEAD   # review everything about to ship
+git push origin main
+```
 
-Spec: `docs/superpowers/specs/2026-07-15-offline-payment-checkout-design.md`
+Then confirm the deploy landed and the real site works:
 
-## Notable
+```bash
+curl -s -o /dev/null -w "%{http_code}" https://app.bite.express/checkout
+```
 
-- Fixes a latent bug in `api-client.ts`: the `{"payment": "..."}` 403 body matched none of the known Laravel error shapes and rendered as the generic "Something went wrong", discarding the real reason. Now parsed. Extracted `parseErrorBody` so it's testable.
-- Introduces vitest. The repo had no test runner. Scope is deliberately narrow: gating, validation, and error parsing only.
-- Uses `/order/track` rather than `/order/details` for the offline payment block. `/order/details` eager-loads `offline_payments` and then ignores it.
+If checkout breaks in production, revert rather than fix forward, because every minute is lost orders:
 
-## Known gaps, not addressed here
-
-- An order abandoned between `/order/place` and `PUT /offline-payment` stays at `order_status='failed'` and is hidden by `Order::scopeFailed`. The Flutter app has the same exposure. Worth a follow-up covering both clients.
-- `PUT /customer/order/offline-payment` has no server-side ownership check; any authenticated customer can submit against any `order_id`. Pre-existing vendor bug.
-- The DVA transfer flow tells customers to "tap Confirm transfer again" on the order page, where no such button exists. Pre-existing dead end, separate fix.
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
+```bash
+git revert --no-edit <sha>
+git push origin main
 ```
 
 ---
