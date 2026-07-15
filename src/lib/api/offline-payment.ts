@@ -78,10 +78,14 @@ export async function submitOfflinePayment(input: {
   customerNote?: string;
   fields: Record<string, string>;
 }): Promise<OfflineSubmitResult> {
+  // Spread fields first: admin-defined labels are slugified server-side
+  // (strtolower + underscores), and "Order ID" slugifies to exactly
+  // `order_id`. If spread after, customer input overwrites the real ID,
+  // causing a 404 and stranding the order in failed state.
   const body: Record<string, unknown> = {
+    ...input.fields,
     order_id: input.orderId,
     method_id: input.methodId,
-    ...input.fields,
   };
   if (input.customerNote) body.customer_note = input.customerNote;
 
@@ -113,10 +117,13 @@ export async function updateOfflinePayment(input: {
   customerNote?: string;
   fields: Record<string, string>;
 }): Promise<OfflineSubmitResult> {
+  // Spread fields first: same reason as submitOfflinePayment. A field
+  // labelled "Update Payment Info" would slugify to `update_payment_info`
+  // and flip the notification branch, sending the wrong customer message.
   const body: Record<string, unknown> = {
+    ...input.fields,
     order_id: input.orderId,
     update_payment_info: 1,
-    ...input.fields,
   };
   if (input.customerNote) body.customer_note = input.customerNote;
 
