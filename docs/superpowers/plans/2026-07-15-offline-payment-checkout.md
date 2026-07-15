@@ -1953,11 +1953,16 @@ the admin's reason and a button that actually goes somewhere."
 
 ```bash
 npm test
-npm run lint
 npm run build
+npm run lint
 ```
 
-Expected: all pass.
+Expected:
+- `npm test` — all pass.
+- `npm run build` — succeeds, no type errors.
+- `npm run lint` — **does NOT pass, and is not expected to.** This repo has a pre-existing lint baseline of **51 errors / 3 warnings** across files unrelated to this work, measured at commit `abb8b23`. The bar is *do not add new errors*, not *reach zero*. Two of the baseline errors sit in files this plan touches and are NOT ours: `checkout-flow.tsx:104` (`set-state-in-effect`, in the original effect's `!cartStoreId` branch) and `payment-picker.tsx:228` (`react/no-unescaped-entities`, the apostrophe in the pre-existing `bank_transfer` hint). Cleaning up the baseline is out of scope; doing it here would bury this feature's diff in unrelated churn.
+
+One expected NEW warning: `react-hooks/exhaustive-deps` on the gating effect in `checkout-flow.tsx` (missing `address`). This matches the existing effect in the same file, which uses the same `[x?.lat, x?.lng]` dependency pattern. Leave it.
 
 - [ ] **Step 2: Manual verification against the backend**
 
