@@ -134,8 +134,24 @@ Resets `status` to `pending` regardless of prior state. Returns
 
 ### Read status
 
-`GET /customer/order/details?order_id=` exposes an `offline_payment` block
-(via `Helpers::offline_payment_formater`, [`Helpers.php:3300-3332`]):
+**Use `GET /customer/order/track?order_id=`, not `/customer/order/details`.**
+
+This is worth stating loudly because it is counter-intuitive.
+`get_order_details` ([`OrderController.php:161-198`]) eager-loads `offline_payments`
+and then **never uses it** — it returns `Helpers::order_details_data_formatting($details)`,
+an array of *line items*. The eager-load is dead weight and the `offline_payment` block
+is absent from that response entirely.
+
+`track_order` ([`OrderController.php:37-86`]) is what emits it, at
+[`OrderController.php:74`]. It also scopes by `user_id`, unlike the submit endpoint.
+For an authenticated customer only `order_id` is required (`contact_number` is required
+only for guests).
+
+The web app already wraps this as `fetchOrderTrack()` ([`orders.ts:159-168`]), so no new
+fetcher is needed — only an extension to the `OrderTrack` type.
+
+The `offline_payment` block (via `Helpers::offline_payment_formater`,
+[`Helpers.php:3300-3332`]):
 
 ```json
 {
@@ -195,7 +211,7 @@ Two alternatives were rejected:
   clear(); router.replace(`/checkout/offline/${orderId}?method=${methodId}`)
        ↓
 /checkout/offline/[orderId]
-  Fetches GET /customer/order/details?order_id=
+  Fetches GET /customer/order/track?order_id=   (existing fetchOrderTrack)
     ├─ no offline_payment block  → create mode → PUT offline-payment
     └─ offline_payment present   → edit mode, prefill from input[] → PUT offline-payment-update
   Shows destination account, authoritative amount, dynamic form
@@ -222,10 +238,10 @@ cannot change it. Offering a selector that silently does nothing would be worse 
 omitting it.
 
 The amount is **not** passed via query string (unlike `/checkout/transfer/[orderId]?amount=`).
-The page fetches order details anyway for mode detection, so the amount comes from there
-and is not tamper-able.
+The page calls `fetchOrderTrack()` anyway for mode detection, so the amount comes from
+there and is not tamper-able.
 
-Fetching order details also makes the page idempotent and re-enterable: a customer who
+Fetching the order also makes the page idempotent and re-enterable: a customer who
 abandons mid-flow can finish by returning to the URL.
 
 ### Gating
@@ -261,7 +277,7 @@ required.
 | File | Purpose |
 |---|---|
 | `src/lib/api/config.ts` | `fetchConfig()`, typed subset (`offline_payment_status`), TTL cache |
-| `src/lib/api/offline-payment.ts` | `fetchOfflineMethods()`, `submitOfflinePayment()`, `updateOfflinePayment()`, plus an exported `normalizeOfflineError()` |
+| `src/lib/api/offline-payment.ts` | `fetchOfflineMethods()`, `submitOfflinePayment()`, `updateOfflinePayment()` |
 | `src/lib/offline-payment-rules.ts` | Pure, dependency-free: `canUseOfflinePayment()`, `validateOfflineForm()`. Extracted so the gating and validation logic is unit-testable without a DOM |
 | `src/app/checkout/offline/[orderId]/page.tsx` | Server page, structural clone of the transfer page |
 | `src/components/checkout/offline-payment-form.tsx` | Client component, sibling to `transfer-instructions.tsx` |
@@ -273,7 +289,8 @@ required.
 |---|---|
 | `src/components/checkout/payment-picker.tsx` | Add `offline_payment` to the `PaymentMethod` union, an `OPTIONS` entry, an `OptionHint` branch, the bank chooser, and gating props |
 | `src/components/checkout/checkout-flow.tsx` | Fetch config + methods + zone flags; pass to picker; add post-place branch |
-| `src/lib/api/orders.ts` | Type the `offline_payment` block on the order detail response |
+| `src/lib/api-client.ts` | Extract `parseErrorBody()` as an exported pure function; add the `payment` branch (see Error handling) |
+| `src/lib/api/orders.ts` | Extend the `OrderTrack` type with the `offline_payment` block |
 | `src/components/orders/order-detail-view.tsx` | Status chip, admin note on denial, working edit affordance |
 
 `offline_payment` is already present in `PlaceOrderInput` ([`orders.ts:231`]), so
@@ -316,12 +333,24 @@ a non-empty message, since `res.statusText` is always `""` over HTTP/2.
 
 **But `{"payment": "<exception message>"}` is not one of those three shapes.** It has no
 `errors` key, is not a bare-string `errors`, is not a validation map, and has no
-top-level `message`. It would therefore fall through to the generic
-`"Something went wrong (error 403). Please try again."`, throwing away the actual reason
-the payment failed. `normalizeOfflineError()` in the offline-payment wrapper handles this
-shape specifically, which is why it is one of the unit-tested functions.
+top-level `message`. It would fall through to the generic
+`"Something went wrong (error 403). Please try again."`, discarding the actual reason the
+payment failed. That is precisely the blank-toast class of bug this file already exists
+to prevent.
 
-Per-endpoint wrappers follow the `walletPayOrder` `reason`-discriminant convention
+**This must be fixed in `api-client.ts`, not in the offline-payment wrapper.** `api<T>()`
+discards the raw error body and returns only `{ ok, status, message, errors }`
+([`api-client.ts:173`]), so by the time a per-endpoint wrapper sees the result, the
+`payment` key is already gone. There is no way to recover it downstream.
+
+The change is additive and small: extract the existing error-body parsing into an
+exported pure function `parseErrorBody(body): { message: string; errors?: Record<string, string[]> }`
+and add a fourth branch for a top-level string `payment`, mirroring the existing
+bare-string `errors` branch. Extracting it is what makes it unit-testable without mocking
+`fetch`; the branch is what makes it correct. Existing behaviour is unchanged for every
+other caller.
+
+Per-endpoint wrappers then follow the `walletPayOrder` `reason`-discriminant convention
 ([`orders.ts:355-379`]) rather than a bare message string.
 
 **The load-bearing rule: if the PUT fails, the order already exists.** The customer stays
@@ -374,9 +403,10 @@ functions with no DOM, deliberately extracted so they are testable in isolation:
    `[]`, each condition false independently, and all three true.
 2. **Required-field validation** — derived from `is_required`, since the server does not
    enforce it.
-3. **Error-shape normalisation** — both 403 bodies, specifically
-   `{"errors":[{"code","message"}]}` and `{"payment":"<message>"}` with no `errors` key,
-   each producing a readable non-empty message.
+3. **Error-shape normalisation** — `parseErrorBody()` against all four Laravel shapes,
+   specifically including `{"payment":"<message>"}` with no `errors` key, each producing
+   a readable non-empty message. Regression-guard the three existing shapes too, since
+   this touches shared code every caller depends on.
 
 Scope is deliberately narrow. Component and integration tests are **not** in scope; this
 introduces a runner for logic that warrants it, without committing the codebase to a
