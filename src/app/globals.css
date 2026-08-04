@@ -432,6 +432,14 @@
 }
 .rise { animation: biteexpress-rise 520ms var(--ease-out-expo) both; }
 
+/* Delivery-location sheet: slides up from the bottom edge on mobile,
+   settles into a gentle rise on desktop dialogs. */
+@keyframes biteexpress-sheet-up {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sheet-up { animation: biteexpress-sheet-up 320ms var(--ease-out-expo) both; }
+
 /* Headline word reveal — apply to spans. */
 @keyframes biteexpress-word-in {
   from { opacity: 0; transform: translateY(40%); }
@@ -459,6 +467,7 @@
   .toast-enter,
   .fade-up,
   .rise,
+  .sheet-up,
   .word-reveal > span,
   .live-dot { animation: none; }
   .card-luxe { transition: none; }

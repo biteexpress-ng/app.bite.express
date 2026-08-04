@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Menu, ShoppingBag, User2, X, MapPin } from "lucide-react";
+import { ChevronDown, Menu, ShoppingBag, User2, X, MapPin } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { ButtonLink } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
 import { useIsAuthenticated } from "@/lib/auth-store";
 import { useLocation } from "@/lib/location-store";
+import { DeliveryLocationSheet } from "@/components/address/delivery-location-sheet";
 import { CartBadge } from "@/components/cart/cart-badge";
 import {
   OrdersBadge,
@@ -20,12 +21,14 @@ import { cn } from "@/lib/cn";
  * Premium customer-app header.
  *
  * - Frosted glass surface, hairline border, lifts on scroll.
- * - Live location chip on the left (signed-in users), beside the wordmark.
+ * - "Deliver to" chip on the left for everyone (guest or signed-in),
+ *   beside the wordmark; opens the delivery-location sheet.
  * - Right cluster: refined icon buttons with subtle ember hover.
  * - Mobile sheet slides down with smooth motion.
  */
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const isAuthed = useIsAuthenticated();
   const location = useLocation((s) => s.location);
@@ -42,7 +45,11 @@ export function SiteHeader() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const cityLine = location?.formattedAddress ?? null;
+  // Trim the country suffix so the chip spends its width on the part
+  // that actually distinguishes addresses.
+  const cityLine = location
+    ? location.formattedAddress.replace(/,\s*Nigeria\s*$/i, "")
+    : null;
 
   return (
     <header
@@ -54,17 +61,41 @@ export function SiteHeader() {
       )}
     >
       <Container className="flex h-16 items-center justify-between md:h-20">
-        <div className="flex min-w-0 items-center gap-3 md:gap-5">
+        <div className="flex min-w-0 items-center gap-2 md:gap-5">
           <Logo priority />
-          {isAuthed && cityLine && (
-            <Link
-              href="/addresses"
-              className="hidden min-w-0 max-w-[14rem] items-center gap-2 rounded-pill border border-ink-200/80 bg-white/70 px-3 py-1.5 text-xs font-medium text-ink-700 transition-all hover:border-brand-red/30 hover:text-brand-red md:inline-flex"
-            >
-              <MapPin size={13} className="shrink-0 text-brand-red" />
-              <span className="truncate">{cityLine}</span>
-            </Link>
-          )}
+
+          {/* Desktop: two-line "Deliver to" chip */}
+          <button
+            type="button"
+            onClick={() => setLocationOpen(true)}
+            className="group hidden min-w-0 max-w-[16rem] items-center gap-2.5 rounded-pill border border-ink-200/80 bg-white/70 py-1.5 pl-3 pr-3.5 text-left transition-all hover:border-brand-red/30 md:inline-flex"
+          >
+            <MapPin size={15} className="shrink-0 text-brand-red" />
+            <span className="min-w-0">
+              <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.14em] text-ink-500">
+                Deliver to
+              </span>
+              <span className="block truncate text-xs font-medium text-ink-900 group-hover:text-brand-red">
+                {cityLine ?? "Choose your location"}
+              </span>
+            </span>
+            <ChevronDown
+              size={13}
+              className="shrink-0 text-ink-400 transition-colors group-hover:text-brand-red"
+            />
+          </button>
+
+          {/* Mobile: compact chip between logo and icon cluster */}
+          <button
+            type="button"
+            onClick={() => setLocationOpen(true)}
+            aria-label="Change delivery location"
+            className="inline-flex min-w-0 max-w-[8.5rem] items-center gap-1.5 rounded-pill border border-ink-200/80 bg-white/70 px-2.5 py-1.5 text-xs font-medium text-ink-900 md:hidden"
+          >
+            <MapPin size={12} className="shrink-0 text-brand-red" />
+            <span className="truncate">{cityLine ?? "Location"}</span>
+            <ChevronDown size={11} className="shrink-0 text-ink-400" />
+          </button>
         </div>
 
         {/* Desktop right cluster */}
@@ -126,16 +157,20 @@ export function SiteHeader() {
       {open && (
         <div className="border-t border-ink-200/70 bg-white/95 backdrop-blur-xl md:hidden">
           <Container className="flex flex-col gap-1 py-4">
-            {isAuthed && cityLine && (
-              <Link
-                href="/addresses"
-                className="mb-2 inline-flex items-center gap-2 self-start rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700"
-                onClick={() => setOpen(false)}
-              >
-                <MapPin size={13} className="text-brand-red" />
-                <span className="truncate">{cityLine}</span>
-              </Link>
-            )}
+            <button
+              type="button"
+              className="mb-2 inline-flex max-w-full items-center gap-2 self-start rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700"
+              onClick={() => {
+                setOpen(false);
+                setLocationOpen(true);
+              }}
+            >
+              <MapPin size={13} className="shrink-0 text-brand-red" />
+              <span className="truncate">
+                {cityLine ?? "Set delivery location"}
+              </span>
+              <ChevronDown size={12} className="shrink-0 text-ink-400" />
+            </button>
             <MobileLink href="/browse" onClick={() => setOpen(false)}>
               Browse
             </MobileLink>
@@ -186,6 +221,11 @@ export function SiteHeader() {
           </Container>
         </div>
       )}
+
+      <DeliveryLocationSheet
+        open={locationOpen}
+        onClose={() => setLocationOpen(false)}
+      />
     </header>
   );
 }
