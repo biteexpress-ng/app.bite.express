@@ -22,6 +22,7 @@ import {
   type OrderTrack,
 } from "@/lib/api/orders";
 import { subscribeOrderStatus } from "@/lib/order-channel";
+import { parseItemDetails } from "@/lib/price-check/item-details";
 import { OrderStatusPill } from "./order-status-pill";
 import { RiderMap } from "./rider-map";
 import { cn } from "@/lib/cn";
@@ -354,7 +355,7 @@ function ItemsCard({ lines }: { lines: OrderDetailLine[] }) {
       <h2 className="mb-3 text-sm font-medium text-ink-900">Items</h2>
       <ul className="divide-y divide-ink-200/70">
         {lines.map((l) => {
-          const parsed = safeParse(l.item_details);
+          const parsed = parseItemDetails(l.item_details);
           const name = parsed?.name ?? `Item #${l.item_id ?? l.id}`;
           return (
             <li key={l.id} className="flex items-start justify-between gap-3 py-3">
@@ -479,15 +480,6 @@ function CenterSpinner({ label }: { label: string }) {
       {label}
     </div>
   );
-}
-
-function safeParse(raw: string | undefined): Record<string, unknown> | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
 }
 
 function parseLatLng(
