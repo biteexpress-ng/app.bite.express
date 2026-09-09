@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { acceptFailureAction } from "./accept-outcome";
+import {
+  ACCEPT_AMOUNT_UNREADABLE,
+  acceptFailureAction,
+} from "./accept-outcome";
 
 describe("acceptFailureAction", () => {
   it("marks the quote expired so the screen stops offering payment", () => {
@@ -38,8 +41,17 @@ describe("acceptFailureAction", () => {
       clearPaymentMethod: false,
       reloadOrder: false,
       expired: false,
+      alreadyAccepted: false,
       hint: null,
     });
+  });
+
+  it("stops offering accept when the accept itself already landed", () => {
+    // A 200 with no readable total. The order is accepted whatever this
+    // client makes of the body, so a second accept can only do harm.
+    const action = acceptFailureAction(ACCEPT_AMOUNT_UNREADABLE);
+    expect(action.alreadyAccepted).toBe(true);
+    expect(action.reloadOrder).toBe(true);
   });
 
   it("falls back to showing the message for an unknown or missing code", () => {
@@ -48,6 +60,7 @@ describe("acceptFailureAction", () => {
       expect(action.clearPaymentMethod).toBe(false);
       expect(action.reloadOrder).toBe(false);
       expect(action.expired).toBe(false);
+      expect(action.alreadyAccepted).toBe(false);
       expect(action.hint).toBeNull();
     }
   });

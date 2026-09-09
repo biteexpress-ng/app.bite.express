@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@/lib/api-client";
+import { ACCEPT_AMOUNT_UNREADABLE } from "@/lib/price-check/accept-outcome";
 import { toWireCart, type PlaceOrderInput } from "@/lib/api/orders";
 
 /**
@@ -124,11 +125,14 @@ export async function acceptQuote(
         lineCount: Number(res.data.line_count ?? 0),
       };
     }
+    // The accept landed. Only the amount is unreadable, so this carries a
+    // code of its own: the screen must reload rather than accept again.
     return {
       ok: false,
       status: 200,
-      code: null,
-      message: "The store accepted your list but sent back no total to pay.",
+      code: ACCEPT_AMOUNT_UNREADABLE,
+      message:
+        "Your prices were accepted, but we could not read the total to charge. Open the order to see what to pay.",
     };
   }
 

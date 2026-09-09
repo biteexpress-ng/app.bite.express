@@ -11,6 +11,11 @@
  * touches the customer's ticks.
  */
 
+/** Client-side sentinel, never sent by the server. `acceptQuote` uses it
+ *  when a 200 comes back with no total we could pay against: the accept
+ *  itself landed, so the screen must not offer to accept again. */
+export const ACCEPT_AMOUNT_UNREADABLE = "price_check_amount_unreadable";
+
 export type AcceptFailureAction = {
   /** The chosen method cannot pay this total. Force a fresh choice. */
   clearPaymentMethod: boolean;
@@ -18,6 +23,9 @@ export type AcceptFailureAction = {
   reloadOrder: boolean;
   /** The hold ran out. The full expired screen is a later task. */
   expired: boolean;
+  /** The accept landed even though this call reported a problem. Accepting
+   *  again cannot help, so the screen must stop offering it. */
+  alreadyAccepted: boolean;
   /** Extra guidance where the server's message alone leaves the
    *  customer without a next step. Null keeps the server's wording. */
   hint: string | null;
@@ -28,6 +36,7 @@ export function acceptFailureAction(code: string | null): AcceptFailureAction {
     clearPaymentMethod: false,
     reloadOrder: false,
     expired: false,
+    alreadyAccepted: false,
     hint: null,
   };
 
@@ -45,8 +54,10 @@ export function acceptFailureAction(code: string | null): AcceptFailureAction {
       return {
         ...base,
         clearPaymentMethod: true,
-        hint: "Pay by card, wallet or bank transfer instead. Your list is unchanged.",
+        hint: "Pay by card, wallet or offline transfer instead. Your list is unchanged.",
       };
+    case ACCEPT_AMOUNT_UNREADABLE:
+      return { ...base, alreadyAccepted: true, reloadOrder: true };
     default:
       // `order_time` and anything unrecognised: the server's message
       // carries the reason, and the customer can re-tick or go back.

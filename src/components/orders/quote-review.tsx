@@ -20,6 +20,7 @@ import { fetchOfflineMethods } from "@/lib/api/offline-payment";
 import { checkZone } from "@/lib/api/zones";
 import { acceptQuote } from "@/lib/api/price-check";
 import { acceptFailureAction } from "@/lib/price-check/accept-outcome";
+import { retryDecision } from "@/lib/price-check/retry-safety";
 import {
   buildAcceptPayload,
   estimatedQuoteTotal,
@@ -68,6 +69,9 @@ type PaymentPending = {
   orderAmount: number;
   method: PaymentMethod;
   problem: string;
+  /** False once a read of the order says it is paid, or says nothing we can
+   *  trust. Charging again on either would risk a second charge. */
+  canRetry: boolean;
 };
 
 function naira(amount: number): string {
@@ -109,6 +113,9 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     hint: string | null;
   } | null>(null);
   const [pending, setPending] = useState<PaymentPending | null>(null);
+  /** Set when the accept landed but this client could not carry on from it.
+   *  Accepting again is not an option, so the review screen stands down. */
+  const [acceptedMessage, setAcceptedMessage] = useState<string | null>(null);
 
   const [offlineEnabled, setOfflineEnabled] = useState(false);
   const [offlineMethods, setOfflineMethods] = useState<OfflinePaymentMethod[]>(
@@ -127,7 +134,13 @@ export function QuoteReview({ orderId }: { orderId: number }) {
         setLoad({ kind: "error", message: trackRes.message });
         return;
       }
-      const rawLines = linesRes.ok ? linesRes.lines : [];
+      // An empty list here would read as "the store quoted nothing", which
+      // is a different thing from "we could not fetch what they quoted".
+      if (!linesRes.ok) {
+        setLoad({ kind: "error", message: linesRes.message });
+        return;
+      }
+      const rawLines = linesRes.lines;
       const lines = toQuoteLines(rawLines);
       // Everything the store can supply starts ticked: the customer is
       // here to drop things, not to re-choose the list they already sent.
@@ -280,7 +293,7 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     if (method === "cash_on_delivery") {
       const res = await payOnDelivery(orderId);
       if (!res.ok) {
-        setPending({ orderAmount, method, problem: res.message });
+        setPending({ orderAmount, method, problem: res.message, canRetry: true });
         return;
       }
       toast.success("Prices accepted. Pay the rider when your order arrives.");
@@ -294,6 +307,7 @@ export function QuoteReview({ orderId }: { orderId: number }) {
         setPending({
           orderAmount,
           method,
+          canRetry: true,
           problem:
             res.reason === "insufficient"
               ? `Your wallet balance is below ${naira(orderAmount)}. Top up on the Wallet page, then pay again.`
@@ -322,6 +336,7 @@ export function QuoteReview({ orderId }: { orderId: number }) {
       setPending({
         orderAmount,
         method,
+        canRetry: false,
         problem:
           "We could not open the card payment. Pick another way to pay from the order page.",
       });
@@ -339,12 +354,13 @@ export function QuoteReview({ orderId }: { orderId: number }) {
       setPending({
         orderAmount,
         method,
-        problem: `Payment cancelled. Your prices are held at ${naira(orderAmount)} until you pay.`,
+        canRetry: true,
+        problem: `You closed the payment window before Paystack told us the outcome. Your prices are held at ${naira(orderAmount)}.`,
       });
       return;
     }
     if (pop.status === "error") {
-      setPending({ orderAmount, method, problem: pop.message });
+      setPending({ orderAmount, method, problem: pop.message, canRetry: true });
       return;
     }
 
@@ -380,7 +396,8 @@ export function QuoteReview({ orderId }: { orderId: number }) {
 
     if (!result.ok) {
       const action = acceptFailureAction(result.code);
-      setFailure({ message: result.message, hint: action.hint });
+      if (action.alreadyAccepted) setAcceptedMessage(result.message);
+      else setFailure({ message: result.message, hint: action.hint });
       if (action.clearPaymentMethod) setPayment(null);
       if (action.reloadOrder) {
         const [trackRes, linesRes] = await Promise.all([
@@ -401,23 +418,55 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     setBusy(false);
   }
 
+  async function retryPayment(p: PaymentPending) {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setBusy(true);
+
+    // Read the order before charging again. A closed popup is not proof
+    // that no money moved, so the order's own payment_status decides,
+    // and a read that does not come back decides nothing.
+    const decision = retryDecision(await fetchOrderTrack(orderId));
+
+    if (decision === "paid") {
+      toast.success("Your payment went through. Nothing more to pay.");
+      router.replace(`/orders/${orderId}`);
+      runningRef.current = false;
+      setBusy(false);
+      return;
+    }
+
+    if (decision === "unknown") {
+      setPending({
+        ...p,
+        canRetry: false,
+        problem:
+          "We could not check whether your payment went through. Open the order to see where it stands before paying again.",
+      });
+      runningRef.current = false;
+      setBusy(false);
+      return;
+    }
+
+    // The panel stays up for the retry. Dropping back to the review
+    // screen here would show a list that has already been accepted, next
+    // to a button offering to accept it again.
+    await settle(p.orderAmount, p.method);
+    runningRef.current = false;
+    setBusy(false);
+  }
+
+  if (acceptedMessage) {
+    return <AcceptedPanel message={acceptedMessage} orderId={orderId} />;
+  }
+
   if (pending) {
     return (
       <PaymentPendingPanel
         orderId={orderId}
         pending={pending}
         busy={busy}
-        onRetry={async () => {
-          if (runningRef.current) return;
-          runningRef.current = true;
-          setBusy(true);
-          // The panel stays up for the retry. Dropping back to the
-          // review screen here would show a list that has already been
-          // accepted, next to a button offering to accept it again.
-          await settle(pending.orderAmount, pending.method);
-          runningRef.current = false;
-          setBusy(false);
-        }}
+        onRetry={() => void retryPayment(pending)}
       />
     );
   }
@@ -577,6 +626,27 @@ function ErrorPanel({
   );
 }
 
+function AcceptedPanel({
+  message,
+  orderId,
+}: {
+  message: string;
+  orderId: number;
+}) {
+  return (
+    <div className="mx-auto max-w-lg rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
+      <h1 className="font-serif text-2xl text-ink-900">Prices accepted</h1>
+      <p className="mt-2 text-sm text-ink-700">{message}</p>
+      <Link
+        href={`/orders/${orderId}`}
+        className="btn-flame mt-5 inline-flex h-12 items-center justify-center rounded-pill px-6 text-sm font-medium text-white"
+      >
+        Open the order
+      </Link>
+    </div>
+  );
+}
+
 function PaymentPendingPanel({
   orderId,
   pending,
@@ -595,19 +665,21 @@ function PaymentPendingPanel({
       </h1>
       <p className="mt-2 text-sm text-ink-700">{pending.problem}</p>
       <p className="mt-3 text-sm text-ink-600">
-        Your order is held at {naira(pending.orderAmount)}. Nothing has been
-        charged.
+        Your order is accepted and held at {naira(pending.orderAmount)}. We
+        check whether it has already been paid before charging again.
       </p>
       <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-        <button
-          type="button"
-          onClick={onRetry}
-          disabled={busy}
-          className="btn-flame inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-pill px-6 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy && <Loader2 size={15} className="animate-spin" />}
-          Pay {naira(pending.orderAmount)}
-        </button>
+        {pending.canRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={busy}
+            className="btn-flame inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-pill px-6 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy && <Loader2 size={15} className="animate-spin" />}
+            Pay {naira(pending.orderAmount)}
+          </button>
+        )}
         <Link
           href={`/orders/${orderId}`}
           className="inline-flex h-12 flex-1 items-center justify-center rounded-pill border border-ink-200 bg-white px-6 text-sm font-medium text-ink-900 hover:bg-ink-50"
