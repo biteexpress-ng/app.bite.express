@@ -124,8 +124,10 @@ export type OrderDetailLine = {
   id: number;
   item_id?: number | null;
   item_campaign_id?: number | null;
-  /** The full snapshot of the item at order time, JSON-encoded. */
-  item_details?: string;
+  /** The full snapshot of the item at order time. The backend runs
+   *  `json_decode()` on this before serialising the response, so it
+   *  arrives as an object; a raw JSON string is the defensive case. */
+  item_details?: Record<string, unknown> | string;
   price: number;
   discount_on_item?: number;
   total_add_on_price?: number;
