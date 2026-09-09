@@ -20,8 +20,13 @@ export type PaymentMethod =
   | "offline_payment";
 
 type Props = {
-  value: PaymentMethod;
+  /** Null means nothing is chosen yet, which the quote review screen
+   *  uses: it will not let a customer accept until they pick. */
+  value: PaymentMethod | null;
   onChange: (v: PaymentMethod) => void;
+  /** Restricts the options to this list. Omit to offer them all
+   *  (subject to the offline gate below). */
+  allow?: PaymentMethod[];
   /** Customer's current wallet balance in NGN. Shown next to the
    *  Wallet option so people know whether they have enough. Pass
    *  null while it's still loading; pass 0 if you know it's empty. */
@@ -93,6 +98,7 @@ const OPTIONS: OptionConfig[] = [
 export function PaymentPicker({
   value,
   onChange,
+  allow,
   walletBalance,
   orderTotal,
   offlineEnabled = false,
@@ -101,7 +107,9 @@ export function PaymentPicker({
   onOfflineMethodChange,
 }: Props) {
   const options = OPTIONS.filter(
-    (opt) => opt.id !== "offline_payment" || offlineEnabled,
+    (opt) =>
+      (allow === undefined || allow.includes(opt.id)) &&
+      (opt.id !== "offline_payment" || offlineEnabled),
   );
 
   return (

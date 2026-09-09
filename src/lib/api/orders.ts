@@ -456,3 +456,31 @@ export async function confirmPaystackPayment(
   if ("skipped" in res) return { ok: false, message: "Backend not configured." };
   return { ok: false, message: res.message };
 }
+
+/**
+ * PUT /api/v1/customer/order/payment-method
+ *
+ * Settles an unpaid order as cash on delivery. The endpoint takes no
+ * method argument: cash is the only thing it can set (OrderController
+ * @update_payment_method). For a quote that has already been accepted
+ * it also runs the store minimum and the cash ceiling again, so a
+ * refusal here still carries a `code`.
+ */
+export type PayOnDeliveryResult =
+  | { ok: true }
+  | { ok: false; code: string | null; message: string };
+
+export async function payOnDelivery(
+  orderId: number,
+): Promise<PayOnDeliveryResult> {
+  const res = await api<{ message?: string }>(
+    "/api/v1/customer/order/payment-method",
+    { method: "PUT", body: { order_id: orderId } },
+  );
+  if (res.ok) return { ok: true };
+  if ("skipped" in res) {
+    return { ok: false, code: null, message: "Backend not configured." };
+  }
+  const code = res.errors ? (Object.keys(res.errors)[0] ?? null) : null;
+  return { ok: false, code, message: res.message };
+}

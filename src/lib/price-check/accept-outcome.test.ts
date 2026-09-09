@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+import { acceptFailureAction } from "./accept-outcome";
+
+describe("acceptFailureAction", () => {
+  it("marks the quote expired so the screen stops offering payment", () => {
+    const action = acceptFailureAction("price_check_quote_expired");
+    expect(action.expired).toBe(true);
+    expect(action.clearPaymentMethod).toBe(false);
+    expect(action.reloadOrder).toBe(false);
+  });
+
+  it("tells the customer to keep a line when everything was excluded", () => {
+    const action = acceptFailureAction("price_check_no_lines");
+    expect(action.hint).not.toBeNull();
+    expect(action.reloadOrder).toBe(false);
+  });
+
+  it("reloads the order once it has left price_confirmed", () => {
+    const action = acceptFailureAction("price_check_already_answered");
+    expect(action.reloadOrder).toBe(true);
+  });
+
+  it("clears the payment method on the cash ceiling refusal", () => {
+    // order_amount arrives on a 203 and means cash cannot carry this
+    // total. The same basket goes through on any other method, so the
+    // one thing that must change is the method.
+    const action = acceptFailureAction("order_amount");
+    expect(action.clearPaymentMethod).toBe(true);
+    expect(action.expired).toBe(false);
+  });
+
+  it("leaves the below-minimum refusal to the server's own message", () => {
+    // order_time is a 406 and reads like a scheduling code. It is the
+    // store minimum, and the message carries the figure, so the screen
+    // adds nothing and changes nothing.
+    const action = acceptFailureAction("order_time");
+    expect(action).toEqual({
+      clearPaymentMethod: false,
+      reloadOrder: false,
+      expired: false,
+      hint: null,
+    });
+  });
+
+  it("falls back to showing the message for an unknown or missing code", () => {
+    for (const code of [null, "something_new"]) {
+      const action = acceptFailureAction(code);
+      expect(action.clearPaymentMethod).toBe(false);
+      expect(action.reloadOrder).toBe(false);
+      expect(action.expired).toBe(false);
+      expect(action.hint).toBeNull();
+    }
+  });
+});

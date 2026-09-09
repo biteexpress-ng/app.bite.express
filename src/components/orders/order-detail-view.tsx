@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  ArrowRight,
   Bike,
   Clock,
   Loader2,
@@ -221,6 +222,16 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
           </div>
 
           <LiveBadge reverbConnected={reverbConnected} status={order.order_status} />
+
+          {order.order_status === "price_confirmed" && (
+            <Link
+              href={`/orders/${order.id}/quote`}
+              className="btn-flame mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-pill px-6 text-sm font-medium text-white"
+            >
+              Review the store&apos;s prices
+              <ArrowRight size={15} strokeWidth={2.2} />
+            </Link>
+          )}
         </header>
 
         <Timeline status={order.order_status} />

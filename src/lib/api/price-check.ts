@@ -78,3 +78,71 @@ export async function sendPriceRequest(
   if ("skipped" in res) return { ok: false, message: "Backend not configured." };
   return { ok: false, message: res.message };
 }
+
+/**
+ * POST /api/v1/customer/order/price-check/accept
+ *
+ * Turns a quote into a payable order server-side: the excluded lines are
+ * deleted, the survivors are rewritten to the quoted values and the total
+ * is recomputed. It has to return before any gateway opens, because the
+ * gateway is checked against the total this call leaves on the order.
+ *
+ * Every refusal rolls the whole thing back, so the caller can leave the
+ * customer's choices untouched and let them try again.
+ */
+
+export type AcceptQuoteResult =
+  | { ok: true; orderId: number; orderAmount: number; lineCount: number }
+  | { ok: false; status: number; code: string | null; message: string };
+
+type AcceptQuoteResponse = {
+  message?: string;
+  order_id?: number;
+  order_amount?: number;
+  line_count?: number;
+};
+
+export async function acceptQuote(
+  payload: Record<string, unknown>,
+): Promise<AcceptQuoteResult> {
+  const res = await api<AcceptQuoteResponse>(
+    "/api/v1/customer/order/price-check/accept",
+    { method: "POST", body: payload },
+  );
+
+  if (res.ok) {
+    const orderId = res.data.order_id;
+    const orderAmount = Number(res.data.order_amount);
+    // Paying against a total we did not actually receive is the one
+    // failure mode this whole screen exists to prevent, so a success
+    // body without a usable amount is treated as a refusal.
+    if (typeof orderId === "number" && Number.isFinite(orderAmount)) {
+      return {
+        ok: true,
+        orderId,
+        orderAmount,
+        lineCount: Number(res.data.line_count ?? 0),
+      };
+    }
+    return {
+      ok: false,
+      status: 200,
+      code: null,
+      message: "The store accepted your list but sent back no total to pay.",
+    };
+  }
+
+  if ("skipped" in res) {
+    return {
+      ok: false,
+      status: 0,
+      code: null,
+      message: "Backend not configured.",
+    };
+  }
+
+  // parseErrorBody keys `errors` by the backend's error code, so the
+  // first key is the code the screen branches on.
+  const code = res.errors ? (Object.keys(res.errors)[0] ?? null) : null;
+  return { ok: false, status: res.status, code, message: res.message };
+}
