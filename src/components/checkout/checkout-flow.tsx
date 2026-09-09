@@ -452,6 +452,7 @@ export function CheckoutFlow() {
   }
 
   const placing = phase.kind === "submitting";
+  const priceCheckEnabled = phase.kind === "ready" && phase.priceCheckEnabled;
 
   return (
     <div className="fade-up grid gap-8 pb-28 lg:grid-cols-[1.6fr_1fr] lg:pb-0">
@@ -468,22 +469,28 @@ export function CheckoutFlow() {
           />
         </CheckoutSection>
 
-        <CheckoutSection
-          step="02"
-          title="How you'd like to pay"
-          subtitle="Card, wallet, transfer or cash on arrival."
-        >
-          <PaymentPicker
-            value={payment}
-            onChange={setPayment}
-            walletBalance={user?.wallet_balance ?? null}
-            orderTotal={subtotal}
-            offlineEnabled={offlineEnabled}
-            offlineMethods={offlineMethods}
-            offlineMethodId={offlineMethodId}
-            onOfflineMethodChange={setOfflineMethodId}
-          />
-        </CheckoutSection>
+        {/* This store quotes prices instead of charging at catalogue
+            price, so how to pay is chosen on the quote review screen
+            once the customer knows the real total, and any method
+            picked here would be ignored by the server. */}
+        {!priceCheckEnabled && (
+          <CheckoutSection
+            step="02"
+            title="How you'd like to pay"
+            subtitle="Card, wallet, transfer or cash on arrival."
+          >
+            <PaymentPicker
+              value={payment}
+              onChange={setPayment}
+              walletBalance={user?.wallet_balance ?? null}
+              orderTotal={subtotal}
+              offlineEnabled={offlineEnabled}
+              offlineMethods={offlineMethods}
+              offlineMethodId={offlineMethodId}
+              onOfflineMethodChange={setOfflineMethodId}
+            />
+          </CheckoutSection>
+        )}
 
         <CheckoutSection
           step="03"
@@ -514,7 +521,11 @@ export function CheckoutFlow() {
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-        <OrderSummary lines={lines} subtotal={subtotal} />
+        <OrderSummary
+          lines={lines}
+          subtotal={subtotal}
+          priceCheckEnabled={priceCheckEnabled}
+        />
         <button
           type="button"
           onClick={handlePlace}
@@ -524,32 +535,41 @@ export function CheckoutFlow() {
           {placing ? (
             <>
               <Loader2 size={16} className="animate-spin" />
-              Placing your order…
+              {priceCheckEnabled ? "Sending your request…" : "Placing your order…"}
             </>
           ) : (
             <>
               <ShoppingBag size={16} />
-              Place order
+              {priceCheckEnabled ? "Send price request" : "Place order"}
               <ArrowRight size={16} strokeWidth={2.2} />
             </>
           )}
         </button>
-        <p className="hidden text-center text-xs text-ink-500 lg:block">
-          You'll see the final total (with delivery) on the success screen.
-        </p>
+        {priceCheckEnabled ? (
+          <p className="text-center text-xs leading-relaxed text-ink-500">
+            This store confirms today&apos;s prices before you pay. Nothing
+            is charged yet.
+          </p>
+        ) : (
+          <p className="hidden text-center text-xs text-ink-500 lg:block">
+            You'll see the final total (with delivery) on the success screen.
+          </p>
+        )}
       </aside>
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-200 bg-white/90 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_-12px_rgba(17,17,17,0.12)] backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex max-w-md items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-500">
-              Subtotal
+              {priceCheckEnabled ? "Estimated subtotal" : "Subtotal"}
             </p>
             <p className="text-base font-semibold text-ink-900">
               ₦{Math.round(subtotal).toLocaleString()}
-              <span className="ml-1 text-xs font-normal text-ink-500">
-                + delivery
-              </span>
+              {!priceCheckEnabled && (
+                <span className="ml-1 text-xs font-normal text-ink-500">
+                  + delivery
+                </span>
+              )}
             </p>
           </div>
           <button
@@ -561,12 +581,12 @@ export function CheckoutFlow() {
             {placing ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Placing…
+                {priceCheckEnabled ? "Sending…" : "Placing…"}
               </>
             ) : (
               <>
                 <ShoppingBag size={14} />
-                Place order
+                {priceCheckEnabled ? "Send price request" : "Place order"}
               </>
             )}
           </button>
