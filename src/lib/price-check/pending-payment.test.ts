@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PAYMENT_ACCOUNTING_WINDOW_MS,
   canOfferPayment,
+  hasOpenOfflineTransfer,
   parsePendingPayment,
   paymentAccounting,
   pendingPaymentKey,
@@ -23,8 +24,16 @@ function record(over: Partial<PendingQuotePayment> = {}): PendingQuotePayment {
   };
 }
 
-function read(order_status: OrderStatus, payment_status: string) {
-  return { order_status, payment_status };
+function read(
+  order_status: OrderStatus,
+  payment_status: string,
+  offlineStatus?: string,
+) {
+  return {
+    order_status,
+    payment_status,
+    offline_payment: offlineStatus ? { data: { status: offlineStatus } } : null,
+  };
 }
 
 describe("parsePendingPayment", () => {
@@ -73,6 +82,36 @@ describe("pendingPaymentResolved", () => {
 
   it("does not count an accepted order still waiting to be paid", () => {
     expect(pendingPaymentResolved(read("price_confirmed", "unpaid"))).toBe(false);
+  });
+
+  it("never counts a failed order, whose copy says no charge was made", () => {
+    // An order that never made it is not evidence that a payment this
+    // browser opened went nowhere.
+    expect(pendingPaymentResolved(read("failed", "unpaid"))).toBe(false);
+  });
+});
+
+describe("hasOpenOfflineTransfer", () => {
+  it("sees a transfer waiting on a person to match it", () => {
+    expect(hasOpenOfflineTransfer(read("price_confirmed", "unpaid", "pending"))).toBe(
+      true,
+    );
+  });
+
+  it("sees a matched transfer the order has not caught up with", () => {
+    expect(
+      hasOpenOfflineTransfer(read("price_confirmed", "unpaid", "verified")),
+    ).toBe(true);
+  });
+
+  it("does not hold back a denied transfer, which the customer must redo", () => {
+    expect(hasOpenOfflineTransfer(read("price_confirmed", "unpaid", "denied"))).toBe(
+      false,
+    );
+  });
+
+  it("is false for an order that never used a transfer", () => {
+    expect(hasOpenOfflineTransfer(read("price_confirmed", "unpaid"))).toBe(false);
   });
 });
 
@@ -124,6 +163,23 @@ describe("canOfferPayment", () => {
   it("stops offering payment once the order is paid or has moved on", () => {
     expect(canOfferPayment(record(), read("price_confirmed", "paid"))).toBe(false);
     expect(canOfferPayment(record(), read("pending", "unpaid"))).toBe(false);
+  });
+
+  it("never offers a second payment while a bank transfer is being checked", () => {
+    // The money is already sent. A card payment here would be the second
+    // one for a single order.
+    expect(
+      canOfferPayment(record(), read("price_confirmed", "unpaid", "pending")),
+    ).toBe(false);
+    expect(
+      canOfferPayment(record(), read("price_confirmed", "unpaid", "verified")),
+    ).toBe(false);
+  });
+
+  it("still offers payment after a transfer was denied", () => {
+    expect(
+      canOfferPayment(record(), read("price_confirmed", "unpaid", "denied")),
+    ).toBe(true);
   });
 
   it("offers nothing without a record: no accept of ours, no total to charge", () => {

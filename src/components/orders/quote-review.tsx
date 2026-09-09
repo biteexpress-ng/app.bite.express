@@ -28,8 +28,8 @@ import { acceptQuote } from "@/lib/api/price-check";
 import { acceptFailureAction } from "@/lib/price-check/accept-outcome";
 import { retryDecision } from "@/lib/price-check/retry-safety";
 import {
-  canOfferPayment,
   clearPendingPayment,
+  hasOpenOfflineTransfer,
   paymentAccounting,
   writePendingPayment,
   type PendingQuotePayment,
@@ -37,7 +37,7 @@ import {
 import { usePendingPayment } from "@/lib/price-check/use-pending-payment";
 import {
   EXPIRED_QUOTE_MESSAGE,
-  quoteAvailability,
+  quoteScreenState,
   reRequestHref,
 } from "@/lib/price-check/quote-expiry";
 import {
@@ -308,14 +308,16 @@ export function QuoteReview({ orderId }: { orderId: number }) {
   // the sweep has already cancelled, and the server settles it by
   // reopening the quote. Until a read accounts for that payment, nothing
   // on this screen may say the prices expired or the order was cancelled,
-  // and nothing may offer to start over.
+  // and nothing may offer to start over. The ordering of that rule against
+  // the others lives in quoteScreenState, not here.
   const now = new Date();
   const accounting = paymentAccounting(record, order, now);
-  const availability = quoteAvailability({
+  const screen = quoteScreenState({
+    order,
     expiresAt,
     now,
     serverSaidExpired: serverExpired,
-    payment: accounting,
+    record,
   });
 
   // Hoisted above the status guard on purpose: the accept that produced
@@ -324,10 +326,15 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     return <AcceptedPanel message={acceptedMessage} orderId={orderId} />;
   }
 
-  if (
-    availability === "verifying" ||
-    (accounting === "unaccounted" && order.order_status !== "price_confirmed")
-  ) {
+  if (screen === "charged") {
+    return <ChargedPanel orderId={orderId} />;
+  }
+
+  if (screen === "offline-pending") {
+    return <OfflinePendingPanel orderId={orderId} />;
+  }
+
+  if (screen === "verifying") {
     return (
       <VerifyingPanel
         orderId={orderId}
@@ -337,33 +344,8 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     );
   }
 
-  if (order.order_status !== "price_confirmed") {
-    // A swept quote lands here as `canceled`, which is the expiry the
-    // customer needs explaining, not a bare "no longer waiting".
-    if (order.order_status === "canceled") {
-      return (
-        <ExpiredPanel
-          orderId={orderId}
-          storeId={storeId}
-          unconfirmedPayment={accounting === "stale"}
-        />
-      );
-    }
-    return (
-      <ErrorPanel
-        message={
-          order.order_status === "price_check"
-            ? "The store has not priced this order yet. We will let you know as soon as they do."
-            : "This order is no longer waiting on your answer."
-        }
-        orderId={orderId}
-      />
-    );
-  }
-
-  // The payment panel comes before the expiry copy: once the accept has
-  // landed the total is fixed server-side, and what this customer needs is
-  // a way to pay it, not an invitation to start again.
+  // The in-session panel, for a payment leg that has just failed. It comes
+  // before the status branches because the accept behind it landed.
   if (pending) {
     return (
       <PaymentPendingPanel
@@ -380,10 +362,23 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     );
   }
 
+  if (screen === "not-priced" || screen === "unavailable") {
+    return (
+      <ErrorPanel
+        message={
+          screen === "not-priced"
+            ? "The store has not priced this order yet. We will let you know as soon as they do."
+            : "This order is no longer waiting on your answer."
+        }
+        orderId={orderId}
+      />
+    );
+  }
+
   // The durable half of the pay affordance: an accept this browser made,
   // read back from storage, so a reload between accepting and paying does
   // not strand the customer with an accepted order and no way to pay it.
-  if (record && canOfferPayment(record, order)) {
+  if (screen === "owes-payment" && record) {
     const storedPending: PaymentPending = {
       orderAmount: record.orderAmount,
       method: knownMethod(record.method),
@@ -405,7 +400,7 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     );
   }
 
-  if (availability === "expired") {
+  if (screen === "expired") {
     return (
       <ExpiredPanel
         orderId={orderId}
@@ -629,6 +624,18 @@ export function QuoteReview({ orderId }: { orderId: number }) {
   async function retryPayment(p: PaymentPending, method: PaymentMethod) {
     if (runningRef.current) return;
     if (methodBlockedReason(method, Boolean(user?.email)) !== null) return;
+    // The screen state already keeps this panel away from an order with a
+    // transfer in the post, and this stops a stale render from getting
+    // through to a second payment for it.
+    if (hasOpenOfflineTransfer(order)) {
+      setPending({
+        ...p,
+        canRetry: false,
+        problem:
+          "Your bank transfer is still being checked. There is nothing else to pay on this order until it is.",
+      });
+      return;
+    }
     runningRef.current = true;
     setBusy(true);
 
@@ -883,6 +890,62 @@ function VerifyingPanel({
           className="inline-flex h-12 flex-1 items-center justify-center rounded-pill border border-ink-200 bg-white px-6 text-sm font-medium text-ink-900 hover:bg-ink-50"
         >
           Back to the order
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/** A gateway told us it captured money for this order. The charge is
+ *  stated plainly, not hedged, and nothing here offers to pay or to
+ *  request fresh prices: both would duplicate what the customer paid. */
+function ChargedPanel({ orderId }: { orderId: number }) {
+  return (
+    <div className="mx-auto max-w-lg rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
+      <h1 className="font-serif text-2xl text-ink-900">Your card was charged</h1>
+      <p className="mt-2 text-sm text-ink-700">
+        Paystack captured the payment for order #{orderId}, but we could not
+        confirm it from here. Ops has been told and will settle this order.
+        Do not pay for it again.
+      </p>
+      <p className="mt-3 text-sm text-ink-600">
+        If you have not heard anything within the hour, contact support with
+        order #{orderId}.
+      </p>
+      <Link
+        href={`/orders/${orderId}`}
+        className="btn-flame mt-5 inline-flex h-12 items-center justify-center rounded-pill px-6 text-sm font-medium text-white"
+      >
+        Open the order
+      </Link>
+    </div>
+  );
+}
+
+/** The customer has sent a bank transfer that a person still has to match.
+ *  Offering another payment here would take a second one for one order. */
+function OfflinePendingPanel({ orderId }: { orderId: number }) {
+  return (
+    <div className="mx-auto max-w-lg rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
+      <h1 className="font-serif text-2xl text-ink-900">
+        Your transfer is being checked
+      </h1>
+      <p className="mt-2 text-sm text-ink-700">
+        We check transfers by hand, usually within a few minutes. There is
+        nothing else to pay on this order while we do.
+      </p>
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <Link
+          href={`/orders/${orderId}`}
+          className="btn-flame inline-flex h-12 flex-1 items-center justify-center rounded-pill px-6 text-sm font-medium text-white"
+        >
+          Open the order
+        </Link>
+        <Link
+          href={`/checkout/offline/${orderId}`}
+          className="inline-flex h-12 flex-1 items-center justify-center rounded-pill border border-ink-200 bg-white px-6 text-sm font-medium text-ink-900 hover:bg-ink-50"
+        >
+          Edit payment details
         </Link>
       </div>
     </div>

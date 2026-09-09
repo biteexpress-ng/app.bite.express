@@ -73,18 +73,44 @@ export function parsePendingPayment(
 type SettlementRead = {
   order_status: OrderStatus;
   payment_status: string;
+  /** Manual bank transfer state, from the same `track` payload. Present on
+   *  every order and null on the ones that never used it. */
+  offline_payment?: { data?: { status?: string | null } | null } | null;
 };
 
 /**
- * Whether a read of the order accounts for the payment on record.
+ * Statuses that say nothing about where the money went.
  *
- * `canceled` deliberately does not count: that is exactly the state the
- * sweep leaves behind when it cancels a quote a gateway is about to
- * capture against, and the server may still settle it.
+ * `canceled` is the state the sweep leaves behind when it cancels a quote
+ * a gateway is about to capture against, and the server may still settle
+ * it. `failed` is here for the same reason and not because a path to it is
+ * known: an order that never made it is not evidence that a payment this
+ * browser opened went nowhere, and the timeline copy for it says outright
+ * that no charge was made.
  */
+const UNSETTLED: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
+  "price_confirmed",
+  "canceled",
+  "failed",
+]);
+
+/** Whether a read of the order accounts for the payment on record. */
 export function pendingPaymentResolved(order: SettlementRead): boolean {
   if (order.payment_status === "paid") return true;
-  return order.order_status !== "price_confirmed" && order.order_status !== "canceled";
+  return !UNSETTLED.has(order.order_status);
+}
+
+/**
+ * Whether the customer has money with us that a person still has to match.
+ *
+ * A bank transfer sits `pending` from the moment the customer says they
+ * sent it until an admin verifies it, and the order stays `price_confirmed`
+ * and `unpaid` for that whole time. Offering a card payment there would
+ * take a second payment for one order.
+ */
+export function hasOpenOfflineTransfer(order: SettlementRead): boolean {
+  const status = order.offline_payment?.data?.status;
+  return status === "pending" || status === "verified";
 }
 
 /** "none" once a read accounts for the payment, or when there is nothing
@@ -108,13 +134,15 @@ export function paymentAccounting(
  *
  * A charged order is excluded even while it reads unpaid: the capture may
  * simply not have been posted yet, and a second charge is the worse of the
- * two mistakes.
+ * two mistakes. An open bank transfer is excluded for the same reason,
+ * with the money already sent and only the matching outstanding.
  */
 export function canOfferPayment(
   record: PendingQuotePayment | null,
   order: SettlementRead,
 ): boolean {
   if (!record || record.charged) return false;
+  if (hasOpenOfflineTransfer(order)) return false;
   return order.order_status === "price_confirmed" && order.payment_status === "unpaid";
 }
 

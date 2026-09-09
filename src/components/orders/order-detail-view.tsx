@@ -79,7 +79,10 @@ const TIMELINE: Array<{
  *   2. HTTP poll every 20s (fallback when Reverb env isn't set, or
  *      when the WebSocket drops)
  *
- * Both stop firing once the order reaches a terminal status.
+ * Both stop firing once the order reaches a terminal status, except while
+ * a payment this browser started is unaccounted for: the server reopens
+ * and settles an order a late capture lands on, and that transition has to
+ * reach the page.
  */
 export function OrderDetailView({ orderId }: { orderId: number }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
