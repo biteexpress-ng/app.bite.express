@@ -21,7 +21,8 @@ export type AcceptFailureAction = {
   clearPaymentMethod: boolean;
   /** The order is no longer awaiting the customer. Re-read it. */
   reloadOrder: boolean;
-  /** The hold ran out. The full expired screen is a later task. */
+  /** The hold ran out. The screen swaps the accept button for the expired
+   *  copy and a way to request fresh prices. */
   expired: boolean;
   /** The accept landed even though this call reported a problem. Accepting
    *  again cannot help, so the screen must stop offering it. */
@@ -58,9 +59,17 @@ export function acceptFailureAction(code: string | null): AcceptFailureAction {
       };
     case ACCEPT_AMOUNT_UNREADABLE:
       return { ...base, alreadyAccepted: true, reloadOrder: true };
+    case "order_time":
+      // The store minimum. The server's message carries the figure, and
+      // the only lever this app gives the customer is the ticks: it ships
+      // without an order-cancel screen, so the hint must not offer one.
+      return {
+        ...base,
+        hint: "Tick more items back on to reach the store's minimum. If they are all ticked already, this order cannot go ahead at these prices.",
+      };
     default:
-      // `order_time` and anything unrecognised: the server's message
-      // carries the reason, and the customer can re-tick or go back.
+      // Anything unrecognised: the server's message carries the reason,
+      // and the customer can re-tick or go back to the order.
       return base;
   }
 }

@@ -32,18 +32,18 @@ describe("acceptFailureAction", () => {
     expect(action.expired).toBe(false);
   });
 
-  it("leaves the below-minimum refusal to the server's own message", () => {
+  it("points the below-minimum refusal at the ticks, the only lever this app has", () => {
     // order_time is a 406 and reads like a scheduling code. It is the
-    // store minimum, and the message carries the figure, so the screen
-    // adds nothing and changes nothing.
+    // store minimum. The server's message carries the figure; the hint
+    // must offer only what the screen can do, and this app ships without
+    // an order-cancel screen.
     const action = acceptFailureAction("order_time");
-    expect(action).toEqual({
-      clearPaymentMethod: false,
-      reloadOrder: false,
-      expired: false,
-      alreadyAccepted: false,
-      hint: null,
-    });
+    expect(action.clearPaymentMethod).toBe(false);
+    expect(action.reloadOrder).toBe(false);
+    expect(action.expired).toBe(false);
+    expect(action.alreadyAccepted).toBe(false);
+    expect(action.hint).toContain("Tick more items back on");
+    expect(action.hint).not.toContain("cancel");
   });
 
   it("stops offering accept when the accept itself already landed", () => {

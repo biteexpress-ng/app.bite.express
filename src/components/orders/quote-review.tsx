@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Clock, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Clock,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import {
   confirmPaystackPayment,
   fetchOrderDetailLines,
@@ -21,6 +27,19 @@ import { checkZone } from "@/lib/api/zones";
 import { acceptQuote } from "@/lib/api/price-check";
 import { acceptFailureAction } from "@/lib/price-check/accept-outcome";
 import { retryDecision } from "@/lib/price-check/retry-safety";
+import {
+  canOfferPayment,
+  clearPendingPayment,
+  paymentAccounting,
+  writePendingPayment,
+  type PendingQuotePayment,
+} from "@/lib/price-check/pending-payment";
+import { usePendingPayment } from "@/lib/price-check/use-pending-payment";
+import {
+  EXPIRED_QUOTE_MESSAGE,
+  quoteAvailability,
+  reRequestHref,
+} from "@/lib/price-check/quote-expiry";
 import {
   buildAcceptPayload,
   estimatedQuoteTotal,
@@ -67,7 +86,9 @@ type Load =
  *  again without a second accept. */
 type PaymentPending = {
   orderAmount: number;
-  method: PaymentMethod;
+  /** The method the last attempt used, which seeds the picker. Null when a
+   *  stored record names a method this build does not offer. */
+  method: PaymentMethod | null;
   problem: string;
   /** False once a read of the order says it is paid, or says nothing we can
    *  trust. Charging again on either would risk a second charge. */
@@ -76,6 +97,25 @@ type PaymentPending = {
 
 function naira(amount: number): string {
   return `₦${Math.round(amount).toLocaleString()}`;
+}
+
+/** A stored method name is only trusted if this screen still offers it. */
+function knownMethod(method: string): PaymentMethod | null {
+  return QUOTE_PAYMENT_METHODS.find((m) => m === method) ?? null;
+}
+
+/** Why the chosen method cannot be used yet, or null. Shared by the accept
+ *  button and the retry panel so a method offered in one is offered in the
+ *  other on the same terms. */
+function methodBlockedReason(
+  method: PaymentMethod | null,
+  hasEmail: boolean,
+): string | null {
+  if (method === null) return "Pick how you'd like to pay to carry on.";
+  if (method === "digital_payment" && !hasEmail) {
+    return "We need an email on file to charge a card. Add one on the Edit profile page, or pick another way to pay.";
+  }
+  return null;
 }
 
 /** Matches how order dates are shown elsewhere in the app: the browser's
@@ -116,6 +156,13 @@ export function QuoteReview({ orderId }: { orderId: number }) {
   /** Set when the accept landed but this client could not carry on from it.
    *  Accepting again is not an option, so the review screen stands down. */
   const [acceptedMessage, setAcceptedMessage] = useState<string | null>(null);
+  /** Set when the server refuses the accept as expired. The server's
+   *  deadline is the authority, so this outranks the local clock. */
+  const [serverExpired, setServerExpired] = useState(false);
+  /** The accept and payment this browser has on record for the order, read
+   *  back from storage so a reload does not strand an accepted, unpaid
+   *  order with no way to pay it. */
+  const record = usePendingPayment(orderId);
 
   const [offlineEnabled, setOfflineEnabled] = useState(false);
   const [offlineMethods, setOfflineMethods] = useState<OfflinePaymentMethod[]>(
@@ -170,6 +217,14 @@ export function QuoteReview({ orderId }: { orderId: number }) {
       cancelled = true;
     };
   }, [orderId, applyLoad]);
+
+  // A read that accounts for the payment retires the record. Leaving it in
+  // storage would keep offering to pay an order that is already settled.
+  useEffect(() => {
+    if (load.kind !== "ready" || record === null) return;
+    if (paymentAccounting(record, load.order, new Date()) !== "none") return;
+    clearPendingPayment(orderId);
+  }, [load, record, orderId]);
 
   // The wallet hint is only useful if it is current, and a top-up made
   // on /wallet a moment ago will not be in the cached user.
@@ -246,8 +301,54 @@ export function QuoteReview({ orderId }: { orderId: number }) {
   }
 
   const { order, lines, expiresAt } = load;
+  const storeId = order.store?.id ?? null;
+
+  // The rule this screen exists to keep: the expiry sweep cannot see an
+  // open gateway session, so a payment started here can land on an order
+  // the sweep has already cancelled, and the server settles it by
+  // reopening the quote. Until a read accounts for that payment, nothing
+  // on this screen may say the prices expired or the order was cancelled,
+  // and nothing may offer to start over.
+  const now = new Date();
+  const accounting = paymentAccounting(record, order, now);
+  const availability = quoteAvailability({
+    expiresAt,
+    now,
+    serverSaidExpired: serverExpired,
+    payment: accounting,
+  });
+
+  // Hoisted above the status guard on purpose: the accept that produced
+  // this message also moves the order on, so the guard would swallow it.
+  if (acceptedMessage) {
+    return <AcceptedPanel message={acceptedMessage} orderId={orderId} />;
+  }
+
+  if (
+    availability === "verifying" ||
+    (accounting === "unaccounted" && order.order_status !== "price_confirmed")
+  ) {
+    return (
+      <VerifyingPanel
+        orderId={orderId}
+        busy={busy}
+        onRecheck={() => void reload()}
+      />
+    );
+  }
 
   if (order.order_status !== "price_confirmed") {
+    // A swept quote lands here as `canceled`, which is the expiry the
+    // customer needs explaining, not a bare "no longer waiting".
+    if (order.order_status === "canceled") {
+      return (
+        <ExpiredPanel
+          orderId={orderId}
+          storeId={storeId}
+          unconfirmedPayment={accounting === "stale"}
+        />
+      );
+    }
     return (
       <ErrorPanel
         message={
@@ -256,6 +357,60 @@ export function QuoteReview({ orderId }: { orderId: number }) {
             : "This order is no longer waiting on your answer."
         }
         orderId={orderId}
+      />
+    );
+  }
+
+  // The payment panel comes before the expiry copy: once the accept has
+  // landed the total is fixed server-side, and what this customer needs is
+  // a way to pay it, not an invitation to start again.
+  if (pending) {
+    return (
+      <PaymentPendingPanel
+        orderId={orderId}
+        pending={pending}
+        busy={busy}
+        user={user}
+        offlineEnabled={offlineEnabled}
+        offlineMethods={offlineMethods}
+        offlineMethodId={offlineMethodId}
+        onOfflineMethodChange={setOfflineMethodId}
+        onRetry={(method) => void retryPayment(pending, method)}
+      />
+    );
+  }
+
+  // The durable half of the pay affordance: an accept this browser made,
+  // read back from storage, so a reload between accepting and paying does
+  // not strand the customer with an accepted order and no way to pay it.
+  if (record && canOfferPayment(record, order)) {
+    const storedPending: PaymentPending = {
+      orderAmount: record.orderAmount,
+      method: knownMethod(record.method),
+      canRetry: true,
+      problem: "Your prices are accepted and this order is waiting to be paid.",
+    };
+    return (
+      <PaymentPendingPanel
+        orderId={orderId}
+        pending={storedPending}
+        busy={busy}
+        user={user}
+        offlineEnabled={offlineEnabled}
+        offlineMethods={offlineMethods}
+        offlineMethodId={offlineMethodId}
+        onOfflineMethodChange={setOfflineMethodId}
+        onRetry={(method) => void retryPayment(storedPending, method)}
+      />
+    );
+  }
+
+  if (availability === "expired") {
+    return (
+      <ExpiredPanel
+        orderId={orderId}
+        storeId={storeId}
+        unconfirmedPayment={accounting === "stale"}
       />
     );
   }
@@ -275,13 +430,33 @@ export function QuoteReview({ orderId }: { orderId: number }) {
   });
 
   const blockedReason =
-    payment === null
-      ? "Pick how you'd like to pay to carry on."
-      : keptCount === 0
-        ? "Keep at least one item to carry on."
-        : payment === "digital_payment" && !user?.email
-          ? "We need an email on file to charge a card. Add one on the Edit profile page, or pick another way to pay."
-          : null;
+    methodBlockedReason(payment, Boolean(user?.email)) ??
+    (keptCount === 0 ? "Keep at least one item to carry on." : null);
+
+  async function reload() {
+    const [trackRes, linesRes] = await Promise.all([
+      fetchOrderTrack(orderId),
+      fetchOrderDetailLines(orderId),
+    ]);
+    applyLoad(trackRes, linesRes);
+  }
+
+  /** Notes the payment about to be opened, so a reload, a navigation or a
+   *  sweep that cancels the order in the meantime still finds it. */
+  function noteAttempt(orderAmount: number, method: PaymentMethod) {
+    const next: PendingQuotePayment = {
+      orderId,
+      orderAmount,
+      method,
+      startedAt: Date.now(),
+      charged: false,
+    };
+    writePendingPayment(next);
+  }
+
+  function settled() {
+    clearPendingPayment(orderId);
+  }
 
   /**
    * The payment leg. Charges `orderAmount`, which comes from the accept
@@ -290,12 +465,15 @@ export function QuoteReview({ orderId }: { orderId: number }) {
    * rejected only after the customer had been charged.
    */
   async function settle(orderAmount: number, method: PaymentMethod) {
+    noteAttempt(orderAmount, method);
+
     if (method === "cash_on_delivery") {
       const res = await payOnDelivery(orderId);
       if (!res.ok) {
         setPending({ orderAmount, method, problem: res.message, canRetry: true });
         return;
       }
+      settled();
       toast.success("Prices accepted. Pay the rider when your order arrives.");
       router.replace(`/orders/${orderId}`);
       return;
@@ -315,12 +493,15 @@ export function QuoteReview({ orderId }: { orderId: number }) {
         });
         return;
       }
+      settled();
       toast.success("Paid from your wallet.");
       router.replace(`/orders/${orderId}`);
       return;
     }
 
     if (method === "offline_payment") {
+      // The transfer page carries on from here and the order stays unpaid
+      // until an admin matches the money, so the record stays too.
       router.replace(
         `/checkout/offline/${orderId}` +
           (offlineMethodId ? `?method=${offlineMethodId}` : ""),
@@ -338,7 +519,7 @@ export function QuoteReview({ orderId }: { orderId: number }) {
         method,
         canRetry: false,
         problem:
-          "We could not open the card payment. Pick another way to pay from the order page.",
+          "We could not open the card payment. Pick another way to pay below.",
       });
       return;
     }
@@ -350,29 +531,56 @@ export function QuoteReview({ orderId }: { orderId: number }) {
       metadata: { order_id: orderId },
     });
 
-    if (pop.status === "cancelled") {
+    if (pop.status !== "success") {
+      // Re-read before concluding anything. A closed popup is not proof
+      // that no money moved: the bank-transfer and USSD channels close the
+      // same way with funds already sent, and the order may have been
+      // cancelled by the expiry sweep and settled again behind us.
+      const decision = retryDecision(await fetchOrderTrack(orderId));
+      if (decision === "paid") {
+        settled();
+        toast.success("Your payment went through. Nothing more to pay.");
+        router.replace(`/orders/${orderId}`);
+        return;
+      }
+      const problem =
+        pop.status === "cancelled"
+          ? `You closed the payment window before Paystack told us the outcome. Your prices are held at ${naira(orderAmount)}.`
+          : pop.message;
       setPending({
         orderAmount,
         method,
-        canRetry: true,
-        problem: `You closed the payment window before Paystack told us the outcome. Your prices are held at ${naira(orderAmount)}.`,
+        canRetry: decision === "retry",
+        problem:
+          decision === "unknown"
+            ? `${problem} We could not check where your payment stands, so we will not charge again until we can.`
+            : problem,
       });
-      return;
-    }
-    if (pop.status === "error") {
-      setPending({ orderAmount, method, problem: pop.message, canRetry: true });
       return;
     }
 
     const confirmRes = await confirmPaystackPayment(orderId, pop.reference);
     if (!confirmRes.ok) {
-      toast.error(
-        `Paystack charged your card but we couldn't confirm server-side: ${confirmRes.message}. Ops has been notified.`,
-      );
-      router.replace(`/orders/${orderId}`);
+      // Paystack captured. Whatever this client failed to do with that
+      // answer, offering to pay again would be charging twice, so the
+      // record is marked charged and no retry is offered.
+      writePendingPayment({
+        orderId,
+        orderAmount,
+        method,
+        startedAt: Date.now(),
+        charged: true,
+      });
+      setPending({
+        orderAmount,
+        method,
+        canRetry: false,
+        problem: `Paystack charged your card but we couldn't confirm it server-side: ${confirmRes.message}. Ops has been notified and will settle this order.`,
+      });
       return;
     }
 
+    settled();
     toast.success("Payment confirmed.");
     router.replace(`/orders/${orderId}`);
   }
@@ -397,15 +605,15 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     if (!result.ok) {
       const action = acceptFailureAction(result.code);
       if (action.alreadyAccepted) setAcceptedMessage(result.message);
-      else setFailure({ message: result.message, hint: action.hint });
-      if (action.clearPaymentMethod) setPayment(null);
-      if (action.reloadOrder) {
-        const [trackRes, linesRes] = await Promise.all([
-          fetchOrderTrack(orderId),
-          fetchOrderDetailLines(orderId),
-        ]);
-        applyLoad(trackRes, linesRes);
+      else if (!action.expired) {
+        setFailure({ message: result.message, hint: action.hint });
       }
+      // The server's deadline is the authority. Once it refuses, the whole
+      // screen switches to the expired copy rather than leaving an accept
+      // button next to a refusal.
+      if (action.expired) setServerExpired(true);
+      if (action.clearPaymentMethod) setPayment(null);
+      if (action.reloadOrder) await reload();
       runningRef.current = false;
       setBusy(false);
       return;
@@ -418,8 +626,9 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     setBusy(false);
   }
 
-  async function retryPayment(p: PaymentPending) {
+  async function retryPayment(p: PaymentPending, method: PaymentMethod) {
     if (runningRef.current) return;
+    if (methodBlockedReason(method, Boolean(user?.email)) !== null) return;
     runningRef.current = true;
     setBusy(true);
 
@@ -429,6 +638,7 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     const decision = retryDecision(await fetchOrderTrack(orderId));
 
     if (decision === "paid") {
+      settled();
       toast.success("Your payment went through. Nothing more to pay.");
       router.replace(`/orders/${orderId}`);
       runningRef.current = false;
@@ -451,24 +661,9 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     // The panel stays up for the retry. Dropping back to the review
     // screen here would show a list that has already been accepted, next
     // to a button offering to accept it again.
-    await settle(p.orderAmount, p.method);
+    await settle(p.orderAmount, method);
     runningRef.current = false;
     setBusy(false);
-  }
-
-  if (acceptedMessage) {
-    return <AcceptedPanel message={acceptedMessage} orderId={orderId} />;
-  }
-
-  if (pending) {
-    return (
-      <PaymentPendingPanel
-        orderId={orderId}
-        pending={pending}
-        busy={busy}
-        onRetry={() => void retryPayment(pending)}
-      />
-    );
   }
 
   return (
@@ -647,17 +842,120 @@ function AcceptedPanel({
   );
 }
 
+/** Shown while a payment this browser started has not been accounted for.
+ *  It deliberately says nothing about expiry or cancellation: the server
+ *  settles a capture that lands on a swept order, so any such copy here
+ *  could tell a charged customer that nothing was charged. */
+function VerifyingPanel({
+  orderId,
+  busy,
+  onRecheck,
+}: {
+  orderId: number;
+  busy: boolean;
+  onRecheck: () => void;
+}) {
+  return (
+    <div className="mx-auto max-w-lg rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
+      <h1 className="font-serif text-2xl text-ink-900">
+        Checking your payment
+      </h1>
+      <p className="mt-2 text-sm text-ink-700">
+        You started a payment for this order, so we are confirming where it
+        stands before saying anything else. This usually takes a moment.
+      </p>
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={onRecheck}
+          disabled={busy}
+          className="btn-flame inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-pill px-6 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <RefreshCw size={15} />
+          )}
+          Check again
+        </button>
+        <Link
+          href={`/orders/${orderId}`}
+          className="inline-flex h-12 flex-1 items-center justify-center rounded-pill border border-ink-200 bg-white px-6 text-sm font-medium text-ink-900 hover:bg-ink-50"
+        >
+          Back to the order
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/** The hold ran out. There is no endpoint that clones a price request, so
+ *  the way back is the store's own page and a fresh list. */
+function ExpiredPanel({
+  orderId,
+  storeId,
+  unconfirmedPayment,
+}: {
+  orderId: number;
+  storeId: number | null;
+  unconfirmedPayment: boolean;
+}) {
+  return (
+    <div className="mx-auto max-w-lg rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
+      <h1 className="font-serif text-2xl text-ink-900">Prices expired</h1>
+      <p className="mt-2 text-sm text-ink-700">{EXPIRED_QUOTE_MESSAGE}</p>
+      {unconfirmedPayment && (
+        <p className="mt-3 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-ink-700">
+          You started a payment for this order and we have not been able to
+          confirm where it ended up. If your bank shows a charge, contact
+          support with order #{orderId} before paying anything again.
+        </p>
+      )}
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <Link
+          href={reRequestHref(storeId)}
+          className="btn-flame inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-pill px-6 text-sm font-medium text-white"
+        >
+          Request again
+          <ArrowRight size={15} strokeWidth={2.2} />
+        </Link>
+        <Link
+          href={`/orders/${orderId}`}
+          className="inline-flex h-12 flex-1 items-center justify-center rounded-pill border border-ink-200 bg-white px-6 text-sm font-medium text-ink-900 hover:bg-ink-50"
+        >
+          Back to the order
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function PaymentPendingPanel({
   orderId,
   pending,
   busy,
+  user,
+  offlineEnabled,
+  offlineMethods,
+  offlineMethodId,
+  onOfflineMethodChange,
   onRetry,
 }: {
   orderId: number;
   pending: PaymentPending;
   busy: boolean;
-  onRetry: () => void;
+  user: { email?: string | null; wallet_balance?: number | null } | null;
+  offlineEnabled: boolean;
+  offlineMethods: OfflinePaymentMethod[];
+  offlineMethodId: number | null;
+  onOfflineMethodChange: (id: number | null) => void;
+  onRetry: (method: PaymentMethod) => void;
 }) {
+  // A refusal the same method will refuse again is a dead end, so the
+  // customer picks the method for the next attempt.
+  const [method, setMethod] = useState<PaymentMethod | null>(pending.method);
+  const blocked = methodBlockedReason(method, Boolean(user?.email));
+
   return (
     <div className="mx-auto max-w-lg rounded-3xl border border-ink-200 bg-white p-6 shadow-soft sm:p-8">
       <h1 className="font-serif text-2xl text-ink-900">
@@ -668,12 +966,32 @@ function PaymentPendingPanel({
         Your order is accepted and held at {naira(pending.orderAmount)}. We
         check whether it has already been paid before charging again.
       </p>
+
+      {pending.canRetry && (
+        <div className="mt-5">
+          <h2 className="mb-3 text-sm font-medium text-ink-900">
+            How you&apos;d like to pay
+          </h2>
+          <PaymentPicker
+            value={method}
+            onChange={setMethod}
+            allow={QUOTE_PAYMENT_METHODS}
+            walletBalance={user?.wallet_balance ?? null}
+            orderTotal={pending.orderAmount}
+            offlineEnabled={offlineEnabled}
+            offlineMethods={offlineMethods}
+            offlineMethodId={offlineMethodId}
+            onOfflineMethodChange={onOfflineMethodChange}
+          />
+        </div>
+      )}
+
       <div className="mt-5 flex flex-col gap-2 sm:flex-row">
         {pending.canRetry && (
           <button
             type="button"
-            onClick={onRetry}
-            disabled={busy}
+            onClick={() => method && onRetry(method)}
+            disabled={busy || blocked !== null}
             className="btn-flame inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-pill px-6 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy && <Loader2 size={15} className="animate-spin" />}
@@ -687,6 +1005,9 @@ function PaymentPendingPanel({
           Back to the order
         </Link>
       </div>
+      {pending.canRetry && blocked && (
+        <p className="mt-2 text-center text-xs text-ink-500">{blocked}</p>
+      )}
     </div>
   );
 }
