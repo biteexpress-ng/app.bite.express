@@ -123,6 +123,46 @@ describe("estimatedQuoteTotal", () => {
     // silently produce a negative or a zero that reads as "free".
     expect(estimatedQuoteTotal([ql({})], new Set(), CHARGES)).toBe(800);
   });
+
+  it("adds the tax term when the quote leaves price and quantity unchanged", () => {
+    // requestedQty 2 * requestedPrice 500 = 1000, quotedPrice 500 *
+    // availableQuantity 2 = 1000: rescale factor is exactly 1, so the
+    // tax of 80 passes through untouched.
+    // Line value: 500 * 2 + 80 = 1080. Total: 1080 + 800 (CHARGES) = 1880.
+    // A mutant that drops `total += rescaledTax(line)` would compute 1800.
+    const line = ql({
+      detailId: 1, requestedQty: 2, requestedPrice: 500,
+      quotedPrice: 500, availableQuantity: 2, taxAmount: 80,
+    });
+    expect(estimatedQuoteTotal([line], new Set([1]), CHARGES)).toBe(1880);
+  });
+
+  it("rescales the tax term when the quote changes price or quantity", () => {
+    // requestedQty 4 * requestedPrice 200 = 800 (original total), quotedPrice
+    // 200 * availableQuantity 2 = 400 (quoted total): rescale factor 1/2, so
+    // taxAmount 100 becomes 100 * 400 / 800 = 50.
+    // Line value: 200 * 2 + 50 = 450. Total: 450 + 800 (CHARGES) = 1250.
+    // A mutant that drops the tax term entirely would compute 1200; one that
+    // passes taxAmount through unscaled would compute 400 + 100 + 800 = 1300.
+    const line = ql({
+      detailId: 1, requestedQty: 4, requestedPrice: 200,
+      quotedPrice: 200, availableQuantity: 2, taxAmount: 100,
+    });
+    expect(estimatedQuoteTotal([line], new Set([1]), CHARGES)).toBe(1250);
+  });
+
+  it("contributes no tax for a line the store cannot supply, even with a large tax amount", () => {
+    const lines = [
+      ql({ detailId: 1, quotedPrice: 1000, availableQuantity: 1, taxAmount: 0 }),
+      ql({
+        detailId: 2, quotedPrice: 500, availableQuantity: 0,
+        isAvailable: false, taxAmount: 999,
+      }),
+    ];
+    // Line 1 alone: 1000 + 0 = 1000. Plus CHARGES 800 = 1800. Line 2's
+    // tax of 999 must not leak into the total despite being ticked.
+    expect(estimatedQuoteTotal(lines, new Set([1, 2]), CHARGES)).toBe(1800);
+  });
 });
 
 describe("buildAcceptPayload", () => {
