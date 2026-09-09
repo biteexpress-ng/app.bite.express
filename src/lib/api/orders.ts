@@ -46,6 +46,17 @@ export type OrderSummary = {
         image_full_url?: string | null;
       }>
     | null;
+  /** ISO datetime the quote stops being payable, or null. Present and
+   *  null on every order platform-wide, including orders that never
+   *  went near a price request. Read it, never compute it. */
+  quote_expires_at?: string | null;
+  /** Charges carried through from the price request unchanged when a
+   *  quote is accepted. The quote review screen needs all four to show
+   *  the customer a total before they commit. */
+  delivery_charge?: number;
+  additional_charge?: number;
+  extra_packaging_amount?: number;
+  dm_tips?: number;
 };
 
 export type OrderStatus =
@@ -62,7 +73,11 @@ export type OrderStatus =
   | "failed"
   | "returned"
   | "accepted"
-  | "ready_for_handover";
+  | "ready_for_handover"
+  /** Parked with the store for pricing. No money has moved. */
+  | "price_check"
+  /** The store has quoted. Awaiting the customer to accept and pay. */
+  | "price_confirmed";
 
 export type OrderListResponse = {
   total_size: number;
@@ -119,6 +134,17 @@ export type OrderDetailLine = {
   variation?: unknown[];
   add_ons?: unknown[];
   tax_amount?: number;
+  /** Unit price the store returned. Null until quoted. NOT a line total. */
+  quoted_price?: number | null;
+  /** What the store can supply, 0 to the requested quantity. Null until quoted. */
+  available_quantity?: number | null;
+  /** False when the store marked the line unavailable. Null until quoted. */
+  is_available?: boolean | null;
+  /** The note the customer attached at request time. */
+  customer_note?: string | null;
+  /** Order-level, and present on the FIRST row only. Never read it
+   *  from a later row. */
+  quote_expires_at?: string | null;
 };
 
 export type OrderDetailLinesResult =

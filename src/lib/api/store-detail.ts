@@ -69,6 +69,10 @@ export type StoreDetail = {
   active?: 0 | 1;
   distance?: number;
   minimum_order?: number;
+  /** The server has already combined the master, module and per-store
+   *  switches into this one boolean. It is the only price-check signal a
+   *  client may branch on. */
+  price_check_enabled?: boolean;
   delivery?: 0 | 1;
   take_away?: 0 | 1;
   module_id?: number;
