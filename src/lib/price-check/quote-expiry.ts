@@ -7,8 +7,9 @@ import {
   type PendingQuotePayment,
 } from "@/lib/price-check/pending-payment";
 
-/** The one wording for an expired quote, shared by the screen and the
- *  order page so the two cannot drift apart. */
+/** The quote screen's wording for an expired quote. The order page has no
+ *  matching copy: a swept quote reads as cancelled there, and what that
+ *  page owes the customer is where any money went, not fresh prices. */
 export const EXPIRED_QUOTE_MESSAGE =
   "These prices have expired. Send a new price request to get today's prices.";
 
