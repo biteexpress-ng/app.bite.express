@@ -50,7 +50,11 @@ export function acceptFailureAction(code: string | null): AcceptFailureAction {
         hint: "Keep at least one item to carry on with this order.",
       };
     case "price_check_already_answered":
-      return { ...base, reloadOrder: true };
+      // The accept has already landed, and the reload brings back the same
+      // `price_confirmed` order. Without standing the screen down, that
+      // order renders the review list and a live accept button again, and
+      // pressing it earns the same refusal for good.
+      return { ...base, reloadOrder: true, alreadyAccepted: true };
     case "order_amount":
       return {
         ...base,

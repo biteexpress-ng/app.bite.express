@@ -23,6 +23,14 @@ describe("acceptFailureAction", () => {
     expect(action.reloadOrder).toBe(true);
   });
 
+  it("stands the screen down when the server says the quote is already answered", () => {
+    // The reload brings back the same price_confirmed order, so without
+    // this the customer gets the review list and a live accept button
+    // again, and every press earns the same refusal.
+    const action = acceptFailureAction("price_check_already_answered");
+    expect(action.alreadyAccepted).toBe(true);
+  });
+
   it("clears the payment method on the cash ceiling refusal", () => {
     // order_amount arrives on a 203 and means cash cannot carry this
     // total. The same basket goes through on any other method, so the
