@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { cartKeyFor, type VariationSelection } from "@/lib/food-variations";
 import type { AddOnSelection } from "@/lib/api/store-detail";
+import { applyLineNote } from "@/lib/price-check/item-notes";
 
 /**
  * Customer cart — client-only for v0.
@@ -213,16 +214,7 @@ export const useCart = create<CartState>((set, get) => ({
   },
 
   setLineNote: (key, note) => {
-    const trimmed = note.trim();
-    const nextLines = get().lines.map((l) => {
-      if (l.key !== key) return l;
-      if (!trimmed) {
-        const rest = { ...l };
-        delete rest.note;
-        return rest;
-      }
-      return { ...l, note: trimmed };
-    });
+    const nextLines = applyLineNote(get().lines, key, note);
     const next: Persisted = { storeId: get().storeId, lines: nextLines };
     writePersisted(next);
     set(next);

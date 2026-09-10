@@ -25,3 +25,32 @@ export function buildItemNotes(lines: CartLine[]): Record<string, string> {
   }
   return notes;
 }
+
+/**
+ * Write a note against every cart line of the keyed line's item.
+ *
+ * The cart shows one note per item id on all of that item's lines
+ * (see buildItemNotes), so a write from any of those lines has to reach
+ * all of them. Writing only the keyed line lets a note left on a sibling
+ * outrank it: clearing the field would save an empty note and then
+ * immediately re-render the sibling's, so the note could not be cleared
+ * from any line but the one it was typed on.
+ */
+export function applyLineNote(
+  lines: CartLine[],
+  key: string,
+  note: string,
+): CartLine[] {
+  const target = lines.find((l) => l.key === key);
+  if (!target) return lines;
+  const trimmed = note.trim().slice(0, MAX_NOTE);
+  return lines.map((line) => {
+    if (line.itemId !== target.itemId) return line;
+    if (!trimmed) {
+      const rest = { ...line };
+      delete rest.note;
+      return rest;
+    }
+    return { ...line, note: trimmed };
+  });
+}
