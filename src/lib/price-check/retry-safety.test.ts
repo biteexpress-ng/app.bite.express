@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { retryDecision } from "./retry-safety";
+import { retryDecision, retryOutcome } from "./retry-safety";
 import type { OrderTrack, OrderTrackResult } from "@/lib/api/orders";
 
 function trackOk(payment_status: string): OrderTrackResult {
@@ -35,5 +35,19 @@ describe("retryDecision", () => {
 
   it("treats an unmodelled payment status as unknown", () => {
     expect(retryDecision(trackOk("partially_paid"))).toBe("unknown");
+  });
+});
+
+describe("retryOutcome", () => {
+  it("keeps the order the decision was read from", () => {
+    const outcome = retryOutcome(trackOk("unpaid"));
+    expect(outcome.decision).toBe("retry");
+    expect(outcome.order?.order_amount).toBe(5000);
+  });
+
+  it("has no order to offer when the read did not come back", () => {
+    const outcome = retryOutcome({ ok: false, message: "Network error" });
+    expect(outcome.decision).toBe("unknown");
+    expect(outcome.order).toBeNull();
   });
 });

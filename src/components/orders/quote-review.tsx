@@ -26,10 +26,11 @@ import { fetchOfflineMethods } from "@/lib/api/offline-payment";
 import { checkZone } from "@/lib/api/zones";
 import { acceptQuote } from "@/lib/api/price-check";
 import { acceptFailureAction } from "@/lib/price-check/accept-outcome";
-import { retryDecision } from "@/lib/price-check/retry-safety";
+import { retryDecision, retryOutcome } from "@/lib/price-check/retry-safety";
 import {
   clearPendingPayment,
   hasOpenOfflineTransfer,
+  payableAmount,
   paymentAccounting,
   writePendingPayment,
   type PendingQuotePayment,
@@ -380,7 +381,9 @@ export function QuoteReview({ orderId }: { orderId: number }) {
   // not strand the customer with an accepted order and no way to pay it.
   if (screen === "owes-payment" && record) {
     const storedPending: PaymentPending = {
-      orderAmount: record.orderAmount,
+      // The order this screen just read, not the stored copy of it. The
+      // record only stands in when a read has not produced a total.
+      orderAmount: payableAmount(order, record.orderAmount),
       method: knownMethod(record.method),
       canRetry: true,
       problem: "Your prices are accepted and this order is waiting to be paid.",
@@ -642,9 +645,9 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     // Read the order before charging again. A closed popup is not proof
     // that no money moved, so the order's own payment_status decides,
     // and a read that does not come back decides nothing.
-    const decision = retryDecision(await fetchOrderTrack(orderId));
+    const outcome = retryOutcome(await fetchOrderTrack(orderId));
 
-    if (decision === "paid") {
+    if (outcome.decision === "paid") {
       settled();
       toast.success("Your payment went through. Nothing more to pay.");
       router.replace(`/orders/${orderId}`);
@@ -653,7 +656,7 @@ export function QuoteReview({ orderId }: { orderId: number }) {
       return;
     }
 
-    if (decision === "unknown") {
+    if (outcome.decision === "unknown") {
       setPending({
         ...p,
         canRetry: false,
@@ -668,7 +671,9 @@ export function QuoteReview({ orderId }: { orderId: number }) {
     // The panel stays up for the retry. Dropping back to the review
     // screen here would show a list that has already been accepted, next
     // to a button offering to accept it again.
-    await settle(p.orderAmount, method);
+    // The amount comes from the same read that decided a second charge is
+    // safe, so the gateway is opened with the total the server holds.
+    await settle(payableAmount(outcome.order, p.orderAmount), method);
     runningRef.current = false;
     setBusy(false);
   }

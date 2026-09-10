@@ -1,4 +1,4 @@
-import type { OrderTrackResult } from "@/lib/api/orders";
+import type { OrderTrack, OrderTrackResult } from "@/lib/api/orders";
 
 /**
  * Whether it is safe to open a payment again after an accept whose payment
@@ -23,4 +23,23 @@ export function retryDecision(read: OrderTrackResult): RetryDecision {
   // Any other value is a payment status this client does not model. It is
   // not a confirmed "unpaid", so it does not earn a second charge.
   return "unknown";
+}
+
+/**
+ * The decision together with the order it was read from.
+ *
+ * The caller needs both: the order that decided whether a second charge is
+ * safe is also the only trustworthy source for the amount to charge, and
+ * reading the decision out of one response while taking the amount from
+ * somewhere else is how the two come apart.
+ */
+export type RetryOutcome = {
+  decision: RetryDecision;
+  /** Null when the read did not come back, which is also when the decision
+   *  is "unknown". */
+  order: OrderTrack | null;
+};
+
+export function retryOutcome(read: OrderTrackResult): RetryOutcome {
+  return { decision: retryDecision(read), order: read.ok ? read.order : null };
 }

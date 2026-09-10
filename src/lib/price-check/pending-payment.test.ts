@@ -4,6 +4,7 @@ import {
   canOfferPayment,
   hasOpenOfflineTransfer,
   parsePendingPayment,
+  payableAmount,
   paymentAccounting,
   pendingPaymentKey,
   pendingPaymentResolved,
@@ -184,5 +185,23 @@ describe("canOfferPayment", () => {
 
   it("offers nothing without a record: no accept of ours, no total to charge", () => {
     expect(canOfferPayment(null, read("price_confirmed", "unpaid"))).toBe(false);
+  });
+});
+
+describe("payableAmount", () => {
+  it("charges the server's total, not a stored one that disagrees", () => {
+    // The stored record lives in localStorage, which the customer can
+    // edit. Opening the gateway with it means the capture is rejected
+    // after the card has been charged.
+    expect(payableAmount({ order_amount: 5000 }, 1)).toBe(5000);
+    expect(payableAmount({ order_amount: 5000 }, 999999)).toBe(5000);
+  });
+
+  it("falls back to the stored total only when the read produced none", () => {
+    expect(payableAmount(null, 5000)).toBe(5000);
+    expect(payableAmount(undefined, 5000)).toBe(5000);
+    expect(payableAmount({ order_amount: null }, 5000)).toBe(5000);
+    expect(payableAmount({ order_amount: 0 }, 5000)).toBe(5000);
+    expect(payableAmount({ order_amount: Number.NaN }, 5000)).toBe(5000);
   });
 });

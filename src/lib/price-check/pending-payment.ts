@@ -146,6 +146,26 @@ export function canOfferPayment(
   return order.order_status === "price_confirmed" && order.payment_status === "unpaid";
 }
 
+/**
+ * The amount a gateway may be opened with.
+ *
+ * The server's own `order_amount` wins wherever a read produced one. The
+ * stored record is user-writable, and the gateway is checked against the
+ * total the accept left on the order, so an amount that disagrees with the
+ * server is rejected only after the customer has been charged. The record
+ * is the fallback for a read that did not come back, not a second opinion.
+ */
+export function payableAmount(
+  order: { order_amount?: number | null } | null | undefined,
+  storedAmount: number,
+): number {
+  const server = order?.order_amount;
+  if (typeof server === "number" && Number.isFinite(server) && server > 0) {
+    return server;
+  }
+  return storedAmount;
+}
+
 /* ---------------------------------------------------------------- */
 /* Storage. Every access is guarded: a browser with storage blocked   */
 /* must fall back to the in-memory path, never throw on render.       */
@@ -164,10 +184,6 @@ export function readPendingPaymentRaw(orderId: number): string | null {
   } catch {
     return null;
   }
-}
-
-export function readPendingPayment(orderId: number): PendingQuotePayment | null {
-  return parsePendingPayment(readPendingPaymentRaw(orderId), orderId);
 }
 
 export function subscribePendingPayment(listener: () => void): () => void {
