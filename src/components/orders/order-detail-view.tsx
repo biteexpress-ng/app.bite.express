@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  ArrowRight,
   Bike,
   Clock,
   Loader2,
@@ -22,6 +23,14 @@ import {
   type OrderTrack,
 } from "@/lib/api/orders";
 import { subscribeOrderStatus } from "@/lib/order-channel";
+import { parseItemDetails } from "@/lib/price-check/item-details";
+import {
+  canOfferPayment,
+  clearPendingPayment,
+  paymentAccounting,
+  type PaymentAccounting,
+} from "@/lib/price-check/pending-payment";
+import { usePendingPayment } from "@/lib/price-check/use-pending-payment";
 import { OrderStatusPill } from "./order-status-pill";
 import { RiderMap } from "./rider-map";
 import { cn } from "@/lib/cn";
@@ -70,11 +79,15 @@ const TIMELINE: Array<{
  *   2. HTTP poll every 20s (fallback when Reverb env isn't set, or
  *      when the WebSocket drops)
  *
- * Both stop firing once the order reaches a terminal status.
+ * Both stop firing once the order reaches a terminal status, except while
+ * a payment this browser started is unaccounted for: the server reopens
+ * and settles an order a late capture lands on, and that transition has to
+ * reach the page.
  */
 export function OrderDetailView({ orderId }: { orderId: number }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [reverbConnected, setReverbConnected] = useState(false);
+  const payment = usePendingPayment(orderId);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Initial load
@@ -102,10 +115,29 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
     };
   }, [orderId]);
 
+  // True while a payment this browser started has not been accounted for.
+  // Read here rather than after the early returns because the live-update
+  // effects need it: they keep running past a cancellation while it holds.
+  const awaitingPayment =
+    state.kind === "ready" &&
+    paymentAccounting(payment, state.order, new Date()) === "unaccounted";
+
+  // A read that accounts for the payment retires the record, so the pay
+  // affordance disappears once the order is settled.
+  useEffect(() => {
+    if (state.kind !== "ready" || payment === null) return;
+    if (paymentAccounting(payment, state.order, new Date()) !== "none") return;
+    clearPendingPayment(orderId);
+  }, [state, payment, orderId]);
+
   // Live updates — Reverb subscription
   useEffect(() => {
     if (state.kind !== "ready") return;
-    if (TERMINAL.has(state.order.order_status)) return;
+    // A cancelled order is normally the end of the line, but not while a
+    // payment this browser started is unaccounted for: the server reopens
+    // and settles an order a late capture lands on, and that transition
+    // arrives here.
+    if (TERMINAL.has(state.order.order_status) && !awaitingPayment) return;
 
     const unsubscribe = subscribeOrderStatus(orderId, (evt) => {
       setReverbConnected(true);
@@ -141,13 +173,13 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
       unsubscribe();
       setReverbConnected(false);
     };
-  }, [orderId, state]);
+  }, [orderId, state, awaitingPayment]);
 
   // HTTP polling fallback — runs in parallel with Reverb so a
   // dropped WebSocket doesn't leave the UI stale.
   useEffect(() => {
     if (state.kind !== "ready") return;
-    if (TERMINAL.has(state.order.order_status)) return;
+    if (TERMINAL.has(state.order.order_status) && !awaitingPayment) return;
 
     pollRef.current = setInterval(async () => {
       const res = await fetchOrderTrack(orderId);
@@ -162,7 +194,7 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [orderId, state]);
+  }, [orderId, state, awaitingPayment]);
 
   if (state.kind === "loading") {
     return <CenterSpinner label="Loading order…" />;
@@ -177,6 +209,12 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
 
   const { order, lines } = state;
   const rider = order.delivery_man?.[0] ?? null;
+  // A payment this browser started can land on an order the expiry sweep
+  // has cancelled, and the server settles it. Until a read accounts for
+  // that payment, this page must not tell the customer the order was
+  // cancelled or that nothing was charged.
+  const accounting = paymentAccounting(payment, order, new Date());
+  const owesPayment = canOfferPayment(payment, order);
 
   // Live rider map shows only while the order is in-flight AND we
   // have an assigned rider AND a usable delivery lat/lng. The
@@ -220,9 +258,28 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
           </div>
 
           <LiveBadge reverbConnected={reverbConnected} status={order.order_status} />
+
+          {order.order_status === "price_confirmed" && (
+            <Link
+              href={`/orders/${order.id}/quote`}
+              className="btn-flame mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-pill px-6 text-sm font-medium text-white"
+            >
+              {/* An accepted quote is past reviewing: what is left is
+                  paying it, and this link is the way back to that. */}
+              {owesPayment
+                ? `Pay ₦${Math.round(order.order_amount).toLocaleString()} for this order`
+                : "Review the store's prices"}
+              <ArrowRight size={15} strokeWidth={2.2} />
+            </Link>
+          )}
         </header>
 
-        <Timeline status={order.order_status} />
+        <Timeline
+          status={order.order_status}
+          orderId={order.id}
+          accounting={accounting}
+          charged={payment?.charged ?? false}
+        />
 
         {showMap && rider && destination && (
           <RiderMap
@@ -271,9 +328,61 @@ function LiveBadge({
   );
 }
 
-function Timeline({ status }: { status: OrderStatus }) {
+function Timeline({
+  status,
+  orderId,
+  accounting,
+  charged,
+}: {
+  status: OrderStatus;
+  orderId: number;
+  accounting: PaymentAccounting;
+  /** True once a gateway told this browser it captured money for the
+   *  order. The quote screen says so outright, and this page saying we
+   *  could not confirm it would leave the two contradicting each other. */
+  charged: boolean;
+}) {
   // If the order is cancelled/refunded etc, render a minimal pill
   // saying so rather than the happy-path timeline.
+  if (status === "canceled" || status === "failed") {
+    // A payment this browser started and cannot account for outranks the
+    // status: the server settles a capture that lands on a swept order, so
+    // "cancelled" and "no charges were made" would both be claims we
+    // cannot stand behind yet.
+    if (charged && accounting !== "none") {
+      return (
+        <CardLite>
+          <p className="text-sm text-ink-700">
+            This order was stopped after your card was charged for it. Ops
+            has been told and will settle or refund it. If you have not
+            heard anything within the hour, contact support with order
+            #{orderId}.
+          </p>
+        </CardLite>
+      );
+    }
+    if (accounting === "unaccounted") {
+      return (
+        <CardLite>
+          <p className="text-sm text-ink-700">
+            You started a payment for this order. We are confirming where it
+            stands before saying where the order stands.
+          </p>
+        </CardLite>
+      );
+    }
+    if (accounting === "stale") {
+      return (
+        <CardLite>
+          <p className="text-sm text-ink-700">
+            This order was stopped, and we could not confirm the payment you
+            started. If your bank shows a charge, contact support with order
+            #{orderId} and we will settle or refund it.
+          </p>
+        </CardLite>
+      );
+    }
+  }
   if (status === "canceled") {
     return (
       <CardLite>
@@ -354,7 +463,7 @@ function ItemsCard({ lines }: { lines: OrderDetailLine[] }) {
       <h2 className="mb-3 text-sm font-medium text-ink-900">Items</h2>
       <ul className="divide-y divide-ink-200/70">
         {lines.map((l) => {
-          const parsed = safeParse(l.item_details);
+          const parsed = parseItemDetails(l.item_details);
           const name = parsed?.name ?? `Item #${l.item_id ?? l.id}`;
           return (
             <li key={l.id} className="flex items-start justify-between gap-3 py-3">
@@ -479,15 +588,6 @@ function CenterSpinner({ label }: { label: string }) {
       {label}
     </div>
   );
-}
-
-function safeParse(raw: string | undefined): Record<string, unknown> | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
 }
 
 function parseLatLng(

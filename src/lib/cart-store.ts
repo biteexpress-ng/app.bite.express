@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { cartKeyFor, type VariationSelection } from "@/lib/food-variations";
 import type { AddOnSelection } from "@/lib/api/store-detail";
+import { applyLineNote } from "@/lib/price-check/item-notes";
 
 /**
  * Customer cart — client-only for v0.
@@ -45,6 +46,9 @@ export type CartLine = {
    *  Empty array when the item has no add-ons or the customer
    *  didn't add any. */
   addOns: AddOnSelection[];
+  /** Free-text note for the store, used only by the price-request flow.
+   *  One note per item id: see buildItemNotes. */
+  note?: string;
 };
 
 export type AddLineInput = {
@@ -67,7 +71,10 @@ export type AddResult =
 // the key wipes any in-flight v2 cart so unitPrice numbers can't
 // silently drift if a v2 line had an add-on baked into its price
 // outside the new field.
-const STORAGE_KEY = "biteexpress.cart.v3";
+// v4 bump — line shape gained `note`. A v3 cart has no notes to lose, so
+// this could have migrated in place, but the file's existing convention
+// is to bump rather than to branch on shape at read time.
+const STORAGE_KEY = "biteexpress.cart.v4";
 
 type Persisted = { storeId: number | null; lines: CartLine[] };
 
@@ -109,6 +116,7 @@ type CartState = {
   hydrate: () => void;
   add: (input: AddLineInput, opts?: { force?: boolean }) => AddResult;
   setQty: (key: string, qty: number) => void;
+  setLineNote: (key: string, note: string) => void;
   remove: (key: string) => void;
   clear: () => void;
 
@@ -200,6 +208,13 @@ export const useCart = create<CartState>((set, get) => ({
     const nextLines = get().lines.map((l) =>
       l.key === key ? { ...l, qty } : l,
     );
+    const next: Persisted = { storeId: get().storeId, lines: nextLines };
+    writePersisted(next);
+    set(next);
+  },
+
+  setLineNote: (key, note) => {
+    const nextLines = applyLineNote(get().lines, key, note);
     const next: Persisted = { storeId: get().storeId, lines: nextLines };
     writePersisted(next);
     set(next);

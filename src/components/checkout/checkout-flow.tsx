@@ -12,6 +12,9 @@ import {
   confirmPaystackPayment,
   walletPayOrder,
 } from "@/lib/api/orders";
+import { sendPriceRequest } from "@/lib/api/price-check";
+import { isPriceRequestCart } from "@/lib/price-check/eligibility";
+import { buildItemNotes } from "@/lib/price-check/item-notes";
 import { fetchStoreDetail } from "@/lib/api/store-detail";
 import { fetchProfile } from "@/lib/api/auth";
 import { checkZone } from "@/lib/api/zones";
@@ -33,7 +36,16 @@ import {
 
 type Phase =
   | { kind: "hydrating" }
-  | { kind: "ready"; moduleId: number; storeZoneId: number | null }
+  | {
+      kind: "ready";
+      moduleId: number;
+      storeZoneId: number | null;
+      /** Whether the cart's store prices on request instead of at
+       *  catalogue price. Carried on the ready phase (not re-derived
+       *  at submit time) so it survives every intermediate setPhase
+       *  call between the store fetch and the submit handler. */
+      priceCheckEnabled: boolean;
+    }
   | { kind: "submitting" }
   | { kind: "error"; message: string };
 
@@ -101,7 +113,7 @@ export function CheckoutFlow() {
   useEffect(() => {
     if (!cartHydrated || !locHydrated || !authHydrated) return;
     if (!cartStoreId) {
-      setPhase({ kind: "ready", moduleId: 0, storeZoneId: null });
+      setPhase({ kind: "ready", moduleId: 0, storeZoneId: null, priceCheckEnabled: false });
       return;
     }
 
@@ -116,6 +128,7 @@ export function CheckoutFlow() {
           kind: "ready",
           moduleId: res.store.module_id ?? 0,
           storeZoneId: res.store.zone_id ?? null,
+          priceCheckEnabled: isPriceRequestCart(res.store),
         });
       } else {
         setPhase({ kind: "error", message: res.message });
@@ -205,19 +218,19 @@ export function CheckoutFlow() {
     // bail before the request goes out.
     const addressZoneCheck = await checkZone(address.lat, address.lng);
     if (addressZoneCheck.kind === "out-of-zone") {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
       toast.error(
         "We don't deliver to that address yet. Pick another and try again.",
       );
       return;
     }
     if (addressZoneCheck.kind === "temp-unavailable") {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
       toast.warn("Delivery is paused in that area right now.");
       return;
     }
     if (addressZoneCheck.kind === "error") {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
       toast.error(addressZoneCheck.message);
       return;
     }
@@ -238,7 +251,7 @@ export function CheckoutFlow() {
       phase.storeZoneId !== null &&
       !eligibleZoneIds.includes(phase.storeZoneId)
     ) {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
       toast.error(
         "This shop doesn't deliver to the chosen address. Pick another address or browse shops near it.",
       );
@@ -246,6 +259,50 @@ export function CheckoutFlow() {
     }
 
     const dist = distanceKm(stored.lat, stored.lng, address.lat, address.lng);
+
+    // Stores that price on request never receive a paymentMethod or a
+    // total to pay: the store quotes first, and the customer picks how
+    // to pay on the review screen once they've seen the real price.
+    // This branch has to run before any payment-method logic below,
+    // because none of it applies to a price request.
+    if (phase.priceCheckEnabled) {
+      const req = await sendPriceRequest({
+        storeId: cartStoreId!,
+        moduleId: phase.moduleId,
+        zoneIds: eligibleZoneIds,
+        lines,
+        lat: address.lat,
+        lng: address.lng,
+        distance: Number.isFinite(dist) ? Math.max(0.1, dist) : 0.5,
+        address: address.text,
+        addressType: address.addressType,
+        contactPersonName:
+          address.contactPersonName ??
+          (user
+            ? [user.f_name, user.l_name].filter(Boolean).join(" ")
+            : undefined),
+        contactPersonNumber: address.contactPersonNumber ?? user?.phone ?? undefined,
+        contactPersonEmail: address.contactPersonEmail ?? user?.email ?? undefined,
+        orderType: "delivery",
+        dmTips: tip,
+        itemNotes: buildItemNotes(lines),
+      });
+
+      if (!req.ok) {
+        setPhase({
+          kind: "ready",
+          moduleId: phase.moduleId,
+          storeZoneId: phase.storeZoneId,
+          priceCheckEnabled: phase.priceCheckEnabled,
+        });
+        toast.error(req.message);
+        return;
+      }
+
+      clear();
+      router.replace(`/orders/${req.orderId}`);
+      return;
+    }
 
     // "bank_transfer" is a CLIENT-SIDE payment method that maps to
     // the backend's `wallet` method — the customer transfers into
@@ -276,7 +333,7 @@ export function CheckoutFlow() {
     });
 
     if (!res.ok) {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
       toast.error(res.message);
       return;
     }
@@ -309,7 +366,7 @@ export function CheckoutFlow() {
       const customerEmail =
         address.contactPersonEmail ?? user?.email ?? null;
       if (!customerEmail) {
-        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
         toast.warn(
           "We need an email on file to charge a card. Add one on the Edit profile page and try again.",
         );
@@ -330,14 +387,14 @@ export function CheckoutFlow() {
       });
 
       if (pop.status === "cancelled") {
-        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
         toast.warn(
           `Payment cancelled. Order #${res.orderId} is on hold — re-place it when you're ready.`,
         );
         return;
       }
       if (pop.status === "error") {
-        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
         toast.error(pop.message);
         return;
       }
@@ -347,7 +404,7 @@ export function CheckoutFlow() {
         pop.reference,
       );
       if (!confirmRes.ok) {
-        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
         toast.error(
           `Paystack charged your card but we couldn't confirm server-side: ${confirmRes.message}. Ops has been notified.`,
         );
@@ -367,7 +424,7 @@ export function CheckoutFlow() {
         router.replace(`/checkout/success?order_id=${res.orderId}`);
         return;
       }
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
       if (pay.reason === "insufficient") {
         toast.warn(
           "Wallet balance is too low. Top up via your DVA on the Wallet page, then re-place the order.",
@@ -390,11 +447,12 @@ export function CheckoutFlow() {
     }
 
     // Should never reach here — PaymentMethod is fully covered above.
-    setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId });
+    setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
     toast.error("Please pick a payment method and try again.");
   }
 
   const placing = phase.kind === "submitting";
+  const priceCheckEnabled = phase.kind === "ready" && phase.priceCheckEnabled;
 
   return (
     <div className="fade-up grid gap-8 pb-28 lg:grid-cols-[1.6fr_1fr] lg:pb-0">
@@ -411,25 +469,31 @@ export function CheckoutFlow() {
           />
         </CheckoutSection>
 
-        <CheckoutSection
-          step="02"
-          title="How you'd like to pay"
-          subtitle="Card, wallet, transfer or cash on arrival."
-        >
-          <PaymentPicker
-            value={payment}
-            onChange={setPayment}
-            walletBalance={user?.wallet_balance ?? null}
-            orderTotal={subtotal}
-            offlineEnabled={offlineEnabled}
-            offlineMethods={offlineMethods}
-            offlineMethodId={offlineMethodId}
-            onOfflineMethodChange={setOfflineMethodId}
-          />
-        </CheckoutSection>
+        {/* This store quotes prices instead of charging at catalogue
+            price, so how to pay is chosen on the quote review screen
+            once the customer knows the real total, and any method
+            picked here would be ignored by the server. */}
+        {!priceCheckEnabled && (
+          <CheckoutSection
+            step="02"
+            title="How you'd like to pay"
+            subtitle="Card, wallet, transfer or cash on arrival."
+          >
+            <PaymentPicker
+              value={payment}
+              onChange={setPayment}
+              walletBalance={user?.wallet_balance ?? null}
+              orderTotal={subtotal}
+              offlineEnabled={offlineEnabled}
+              offlineMethods={offlineMethods}
+              offlineMethodId={offlineMethodId}
+              onOfflineMethodChange={setOfflineMethodId}
+            />
+          </CheckoutSection>
+        )}
 
         <CheckoutSection
-          step="03"
+          step={priceCheckEnabled ? "02" : "03"}
           title="Tip your rider"
           subtitle="100% goes to the rider who delivers your order."
         >
@@ -457,7 +521,11 @@ export function CheckoutFlow() {
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-        <OrderSummary lines={lines} subtotal={subtotal} />
+        <OrderSummary
+          lines={lines}
+          subtotal={subtotal}
+          priceCheckEnabled={priceCheckEnabled}
+        />
         <button
           type="button"
           onClick={handlePlace}
@@ -467,32 +535,41 @@ export function CheckoutFlow() {
           {placing ? (
             <>
               <Loader2 size={16} className="animate-spin" />
-              Placing your order…
+              {priceCheckEnabled ? "Sending your request…" : "Placing your order…"}
             </>
           ) : (
             <>
               <ShoppingBag size={16} />
-              Place order
+              {priceCheckEnabled ? "Send price request" : "Place order"}
               <ArrowRight size={16} strokeWidth={2.2} />
             </>
           )}
         </button>
-        <p className="hidden text-center text-xs text-ink-500 lg:block">
-          You'll see the final total (with delivery) on the success screen.
-        </p>
+        {priceCheckEnabled ? (
+          <p className="text-center text-xs leading-relaxed text-ink-500">
+            This store confirms today&apos;s prices before you pay. Nothing
+            is charged yet.
+          </p>
+        ) : (
+          <p className="hidden text-center text-xs text-ink-500 lg:block">
+            You'll see the final total (with delivery) on the success screen.
+          </p>
+        )}
       </aside>
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-200 bg-white/90 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_-12px_rgba(17,17,17,0.12)] backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex max-w-md items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-500">
-              Subtotal
+              {priceCheckEnabled ? "Estimated subtotal" : "Subtotal"}
             </p>
             <p className="text-base font-semibold text-ink-900">
               ₦{Math.round(subtotal).toLocaleString()}
-              <span className="ml-1 text-xs font-normal text-ink-500">
-                + delivery
-              </span>
+              {!priceCheckEnabled && (
+                <span className="ml-1 text-xs font-normal text-ink-500">
+                  + delivery
+                </span>
+              )}
             </p>
           </div>
           <button
@@ -504,12 +581,12 @@ export function CheckoutFlow() {
             {placing ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Placing…
+                {priceCheckEnabled ? "Sending…" : "Placing…"}
               </>
             ) : (
               <>
                 <ShoppingBag size={14} />
-                Place order
+                {priceCheckEnabled ? "Send price request" : "Place order"}
               </>
             )}
           </button>

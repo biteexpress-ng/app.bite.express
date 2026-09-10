@@ -2,6 +2,8 @@ import type { OrderStatus } from "@/lib/api/orders";
 import { cn } from "@/lib/cn";
 
 const STATUS_COPY: Record<string, { label: string; tone: ToneKey }> = {
+  price_check: { label: "Awaiting price", tone: "warn" },
+  price_confirmed: { label: "Quote ready", tone: "warn" },
   pending: { label: "Pending", tone: "neutral" },
   confirmed: { label: "Confirmed", tone: "info" },
   accepted: { label: "Accepted", tone: "info" },

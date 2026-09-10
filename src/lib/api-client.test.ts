@@ -1,5 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { parseErrorBody } from "@/lib/api-client";
+import { isRefusalBody, parseErrorBody } from "@/lib/api-client";
+
+describe("isRefusalBody", () => {
+  it("treats a 203 carrying a Laravel errors array as a refusal", () => {
+    expect(
+      isRefusalBody(203, {
+        errors: [{ code: "order_amount", message: "Amount crossed maximum cod order amount" }],
+      }),
+    ).toBe(true);
+  });
+
+  it("treats a 203 carrying a bare errors string as a refusal", () => {
+    expect(isRefusalBody(203, { errors: "Unauthorized" })).toBe(true);
+  });
+
+  it("does not treat a 200 with an errors key as a refusal", () => {
+    // Only the 2xx codes the backend actually uses for refusals are
+    // reinterpreted. Widening this to every 2xx would let an unrelated
+    // endpoint that echoes an empty errors array break its own callers.
+    expect(isRefusalBody(200, { errors: [{ code: "x", message: "y" }] })).toBe(false);
+  });
+
+  it("does not treat a 203 without a usable error as a refusal", () => {
+    expect(isRefusalBody(203, { message: "Prices accepted. You can pay now." })).toBe(false);
+    expect(isRefusalBody(203, {})).toBe(false);
+    expect(isRefusalBody(203, { errors: [] })).toBe(false);
+  });
+
+  it("reads the refusal message through the existing parser", () => {
+    const parsed = parseErrorBody({
+      errors: [{ code: "order_amount", message: "Amount crossed maximum cod order amount" }],
+    });
+    expect(parsed.message).toBe("Amount crossed maximum cod order amount");
+    expect(parsed.errors).toEqual({ order_amount: ["Amount crossed maximum cod order amount"] });
+  });
+});
 
 describe("parseErrorBody", () => {
   it("reads Laravel error_processor arrays into message and errors", () => {

@@ -7,6 +7,10 @@ import { selectionsSummary } from "@/lib/food-variations";
 type Props = {
   lines: CartLine[];
   subtotal: number;
+  /** True when the cart's store prices on request. Nothing is charged
+   *  on this path yet, so the final row reads as an estimate rather
+   *  than a total to confirm, matching /cart's wording. */
+  priceCheckEnabled?: boolean;
 };
 
 /**
@@ -16,7 +20,7 @@ type Props = {
  * call — POST /api/v1/customer/order/get-Tax — and we defer it to
  * slice 6b).
  */
-export function OrderSummary({ lines, subtotal }: Props) {
+export function OrderSummary({ lines, subtotal, priceCheckEnabled = false }: Props) {
   return (
     <div className="overflow-hidden rounded-3xl border border-ink-200 bg-white shadow-card">
       <div className="border-b border-ink-200/70 px-5 pt-5 pb-3">
@@ -78,8 +82,11 @@ export function OrderSummary({ lines, subtotal }: Props) {
           <dd>Calculated by your rider</dd>
         </div>
         <div className="flex items-center justify-between border-t border-ink-200/70 pt-3 text-base font-semibold text-ink-900">
-          <dt>Total to confirm</dt>
-          <dd>₦{Math.round(subtotal).toLocaleString()}+</dd>
+          <dt>{priceCheckEnabled ? "Estimated subtotal" : "Total to confirm"}</dt>
+          <dd>
+            ₦{Math.round(subtotal).toLocaleString()}
+            {!priceCheckEnabled && "+"}
+          </dd>
         </div>
       </dl>
     </div>

@@ -55,7 +55,7 @@ function publicOrigin(): string {
   );
 }
 
-type ErrorBody = {
+export type ErrorBody = {
   message?: string;
   /** Offline-payment endpoints return {"payment": "<exception message>"}
    *  on failure (OrderController.php:470-540). It carries no `errors`
@@ -120,6 +120,26 @@ export function parseErrorBody(errBody: ErrorBody): ParsedError {
   if (!message && typeof errBody.payment === "string") message = errBody.payment;
 
   return { message, errors };
+}
+
+/**
+ * HTTP 203 is a 2xx, so `res.ok` is true for it, but the backend uses it
+ * to REFUSE: place-order and price-check/accept both return 203 with an
+ * errors array when the total is over the module's cash-on-delivery
+ * ceiling. Read as a success it shows the customer a confirmed order that
+ * does not exist. See the price-check API contract, section 7.0.
+ *
+ * Only 203 is reinterpreted. A blanket "any 2xx with an errors key"
+ * rule would let an unrelated endpoint that echoes an empty errors
+ * array start failing its own callers.
+ */
+export function isRefusalBody(status: number, body: ErrorBody): boolean {
+  if (status !== 203) return false;
+  // Check if the raw body has a usable errors key (any shape: array, string, object).
+  // A 203 with an empty errors array or a message-only body is not a refusal.
+  if (!body.errors) return false;
+  if (Array.isArray(body.errors) && body.errors.length === 0) return false;
+  return true;
 }
 
 export async function api<T>(
@@ -206,8 +226,21 @@ export async function api<T>(
       return { ok: false, status: res.status, message, errors };
     }
 
-    const data = (await res.json()) as T;
-    return { ok: true, data };
+    const raw: unknown = await res.json();
+
+    if (isRefusalBody(res.status, raw as ErrorBody)) {
+      const parsed = parseErrorBody(raw as ErrorBody);
+      return {
+        ok: false,
+        status: res.status,
+        message:
+          parsed.message ||
+          `Something went wrong (error ${res.status}). Please try again.`,
+        errors: parsed.errors,
+      };
+    }
+
+    return { ok: true, data: raw as T };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, status: 0, message };

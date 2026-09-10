@@ -46,6 +46,17 @@ export type OrderSummary = {
         image_full_url?: string | null;
       }>
     | null;
+  /** ISO datetime the quote stops being payable, or null. Present and
+   *  null on every order platform-wide, including orders that never
+   *  went near a price request. Read it, never compute it. */
+  quote_expires_at?: string | null;
+  /** Charges carried through from the price request unchanged when a
+   *  quote is accepted. The quote review screen needs all four to show
+   *  the customer a total before they commit. */
+  delivery_charge?: number;
+  additional_charge?: number;
+  extra_packaging_amount?: number;
+  dm_tips?: number;
 };
 
 export type OrderStatus =
@@ -62,7 +73,11 @@ export type OrderStatus =
   | "failed"
   | "returned"
   | "accepted"
-  | "ready_for_handover";
+  | "ready_for_handover"
+  /** Parked with the store for pricing. No money has moved. */
+  | "price_check"
+  /** The store has quoted. Awaiting the customer to accept and pay. */
+  | "price_confirmed";
 
 export type OrderListResponse = {
   total_size: number;
@@ -109,8 +124,10 @@ export type OrderDetailLine = {
   id: number;
   item_id?: number | null;
   item_campaign_id?: number | null;
-  /** The full snapshot of the item at order time, JSON-encoded. */
-  item_details?: string;
+  /** The full snapshot of the item at order time. The backend runs
+   *  `json_decode()` on this before serialising the response, so it
+   *  arrives as an object; a raw JSON string is the defensive case. */
+  item_details?: Record<string, unknown> | string;
   price: number;
   discount_on_item?: number;
   total_add_on_price?: number;
@@ -119,6 +136,17 @@ export type OrderDetailLine = {
   variation?: unknown[];
   add_ons?: unknown[];
   tax_amount?: number;
+  /** Unit price the store returned. Null until quoted. NOT a line total. */
+  quoted_price?: number | null;
+  /** What the store can supply, 0 to the requested quantity. Null until quoted. */
+  available_quantity?: number | null;
+  /** False when the store marked the line unavailable. Null until quoted. */
+  is_available?: boolean | null;
+  /** The note the customer attached at request time. */
+  customer_note?: string | null;
+  /** Order-level, and present on the FIRST row only. Never read it
+   *  from a later row. */
+  quote_expires_at?: string | null;
 };
 
 export type OrderDetailLinesResult =
@@ -284,26 +312,35 @@ function toWireVariation(
     .map((s) => ({ name: s.name, values: { label: s.values } }));
 }
 
-export async function placeOrder(
-  input: PlaceOrderInput,
-): Promise<PlaceOrderResult> {
-  const cart = input.lines.map((l) => ({
+/**
+ * Shape cart lines into the wire format both /order/place and
+ * /order/price-check expect. Shared so the `variant: ""` fix below
+ * cannot drift between the two payloads.
+ */
+export function toWireCart(lines: CartLine[]) {
+  return lines.map((l) => ({
     item_id: l.itemId,
     item_type: "App\\Models\\Item",
     quantity: l.qty,
     // `variant` is the legacy single-variant string. This app only
     // uses the modern food_variations system (`variation` below), so
-    // there's never a legacy variant — but the key must still be
+    // there's never a legacy variant, but the key must still be
     // present: makeOrderDetails does a bare json_encode($c['variant'])
     // at PlaceNewOrder.php:1175. Omitting it throws "Undefined array
     // key variant" (PHP 8), which the controller catches and returns
-    // as a 403 — the real cause of checkout failing on the web app.
+    // as a 403. That is the real cause of checkout failing on the web app.
     // The Flutter app sends "" here for food-variation items too.
     variant: "",
     variation: toWireVariation(l.selections),
     add_on_ids: l.addOns.map((a) => a.id),
     add_on_qtys: l.addOns.map((a) => a.qty),
   }));
+}
+
+export async function placeOrder(
+  input: PlaceOrderInput,
+): Promise<PlaceOrderResult> {
+  const cart = toWireCart(input.lines);
 
   const body: Record<string, unknown> = {
     is_buy_now: 1,
@@ -420,4 +457,32 @@ export async function confirmPaystackPayment(
   if (res.ok) return { ok: true };
   if ("skipped" in res) return { ok: false, message: "Backend not configured." };
   return { ok: false, message: res.message };
+}
+
+/**
+ * PUT /api/v1/customer/order/payment-method
+ *
+ * Settles an unpaid order as cash on delivery. The endpoint takes no
+ * method argument: cash is the only thing it can set (OrderController
+ * @update_payment_method). For a quote that has already been accepted
+ * it also runs the store minimum and the cash ceiling again, so a
+ * refusal here still carries a `code`.
+ */
+export type PayOnDeliveryResult =
+  | { ok: true }
+  | { ok: false; code: string | null; message: string };
+
+export async function payOnDelivery(
+  orderId: number,
+): Promise<PayOnDeliveryResult> {
+  const res = await api<{ message?: string }>(
+    "/api/v1/customer/order/payment-method",
+    { method: "PUT", body: { order_id: orderId } },
+  );
+  if (res.ok) return { ok: true };
+  if ("skipped" in res) {
+    return { ok: false, code: null, message: "Backend not configured." };
+  }
+  const code = res.errors ? (Object.keys(res.errors)[0] ?? null) : null;
+  return { ok: false, code, message: res.message };
 }
