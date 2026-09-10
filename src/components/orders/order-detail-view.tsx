@@ -278,6 +278,7 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
           status={order.order_status}
           orderId={order.id}
           accounting={accounting}
+          charged={payment?.charged ?? false}
         />
 
         {showMap && rider && destination && (
@@ -331,10 +332,15 @@ function Timeline({
   status,
   orderId,
   accounting,
+  charged,
 }: {
   status: OrderStatus;
   orderId: number;
   accounting: PaymentAccounting;
+  /** True once a gateway told this browser it captured money for the
+   *  order. The quote screen says so outright, and this page saying we
+   *  could not confirm it would leave the two contradicting each other. */
+  charged: boolean;
 }) {
   // If the order is cancelled/refunded etc, render a minimal pill
   // saying so rather than the happy-path timeline.
@@ -343,6 +349,18 @@ function Timeline({
     // status: the server settles a capture that lands on a swept order, so
     // "cancelled" and "no charges were made" would both be claims we
     // cannot stand behind yet.
+    if (charged && accounting !== "none") {
+      return (
+        <CardLite>
+          <p className="text-sm text-ink-700">
+            This order was stopped after your card was charged for it. Ops
+            has been told and will settle or refund it. If you have not
+            heard anything within the hour, contact support with order
+            #{orderId}.
+          </p>
+        </CardLite>
+      );
+    }
     if (accounting === "unaccounted") {
       return (
         <CardLite>
