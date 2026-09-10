@@ -493,7 +493,7 @@ export function CheckoutFlow() {
         )}
 
         <CheckoutSection
-          step="03"
+          step={priceCheckEnabled ? "02" : "03"}
           title="Tip your rider"
           subtitle="100% goes to the rider who delivers your order."
         >
