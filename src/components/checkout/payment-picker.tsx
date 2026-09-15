@@ -1,23 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Banknote,
-  Building2,
-  CreditCard,
-  Wallet as WalletIcon,
-  Landmark,
-} from "lucide-react";
+import { Building2, CreditCard, Wallet as WalletIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { OfflinePaymentMethod } from "@/lib/offline-payment-rules";
 import { BankChips } from "@/components/checkout/bank-chips";
 
-export type PaymentMethod =
-  | "cash_on_delivery"
-  | "digital_payment"
-  | "wallet"
-  | "bank_transfer"
-  | "offline_payment";
+export type PaymentMethod = "digital_payment" | "wallet" | "offline_payment";
 
 type Props = {
   /** Null means nothing is chosen yet, which the quote review screen
@@ -56,24 +45,14 @@ type OptionConfig = {
 
 const OPTIONS: OptionConfig[] = [
   {
-    id: "cash_on_delivery",
-    label: "Cash on delivery",
-    icon: <Banknote size={18} />,
-  },
-  {
     id: "digital_payment",
-    label: "Card (Paystack)",
+    label: "Pay Online (eTransfer, Card etc)",
     icon: <CreditCard size={18} />,
   },
   {
     id: "wallet",
     label: "Wallet balance",
     icon: <WalletIcon size={18} />,
-  },
-  {
-    id: "bank_transfer",
-    label: "Bank transfer (Dedicated account)",
-    icon: <Landmark size={18} />,
   },
   {
     id: "offline_payment",
@@ -85,15 +64,12 @@ const OPTIONS: OptionConfig[] = [
 /**
  * Payment-method radios for /checkout.
  *
- *   cash_on_delivery   → backend payment_method "cash_on_delivery"
- *   digital_payment    → Paystack inline popup (slice 6b)
+ *   digital_payment    → Paystack inline popup (card, transfer, USSD)
  *   wallet             → deducts wallet_balance immediately
- *   bank_transfer      → still backend payment_method "wallet",
- *                        but the customer is routed to a transfer
- *                        instructions page where they send funds to
- *                        their DVA (Paystack credits the wallet via
- *                        webhook), then click "I've sent it" to
- *                        finalise the order.
+ *   offline_payment    → manual transfer, verified by ops
+ *
+ * Cash on delivery and the dedicated-account transfer were removed from
+ * the web app on 2026-09-15.
  */
 export function PaymentPicker({
   value,
@@ -216,25 +192,10 @@ function OptionHint({
   walletBalance?: number | null;
   orderTotal?: number | null;
 }) {
-  if (id === "cash_on_delivery") {
-    return (
-      <p className="mt-0.5 text-xs text-ink-500">
-        Pay the rider when your order arrives.
-      </p>
-    );
-  }
   if (id === "digital_payment") {
     return (
       <p className="mt-0.5 text-xs text-ink-500">
-        Pay now with any card, bank, or USSD via Paystack.
-      </p>
-    );
-  }
-  if (id === "bank_transfer") {
-    return (
-      <p className="mt-0.5 text-xs text-ink-500">
-        Transfer from any bank to your dedicated account — we'll confirm in
-        seconds.
+        Pay now by bank transfer, card or USSD. Confirmed instantly.
       </p>
     );
   }

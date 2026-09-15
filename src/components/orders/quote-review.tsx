@@ -14,7 +14,6 @@ import {
   confirmPaystackPayment,
   fetchOrderDetailLines,
   fetchOrderTrack,
-  payOnDelivery,
   walletPayOrder,
   type OrderDetailLinesResult,
   type OrderTrack,
@@ -66,7 +65,6 @@ import { QuoteLineRow } from "./quote-line-row";
  *  wallet later, which would leave an accepted quote unpaid and its
  *  hold ticking. The four here all settle now. */
 const QUOTE_PAYMENT_METHODS: PaymentMethod[] = [
-  "cash_on_delivery",
   "digital_payment",
   "wallet",
   "offline_payment",
@@ -464,18 +462,6 @@ export function QuoteReview({ orderId }: { orderId: number }) {
    */
   async function settle(orderAmount: number, method: PaymentMethod) {
     noteAttempt(orderAmount, method);
-
-    if (method === "cash_on_delivery") {
-      const res = await payOnDelivery(orderId);
-      if (!res.ok) {
-        setPending({ orderAmount, method, problem: res.message, canRetry: true });
-        return;
-      }
-      settled();
-      toast.success("Prices accepted. Pay the rider when your order arrives.");
-      router.replace(`/orders/${orderId}`);
-      return;
-    }
 
     if (method === "wallet") {
       const res = await walletPayOrder(orderId);

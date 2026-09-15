@@ -82,7 +82,7 @@ export function CheckoutFlow() {
 
   const [phase, setPhase] = useState<Phase>({ kind: "hydrating" });
   const [address, setAddress] = useState<CheckoutAddress | null>(null);
-  const [payment, setPayment] = useState<PaymentMethod>("cash_on_delivery");
+  const [payment, setPayment] = useState<PaymentMethod>("digital_payment");
   const [tip, setTip] = useState(0);
 
   // Offline payment gating. Resolved on mount from three independent
@@ -178,7 +178,7 @@ export function CheckoutFlow() {
       // unavailable (address change), fall back rather than leave an
       // invisible selection armed.
       if (!enabled) {
-        setPayment((p) => (p === "offline_payment" ? "cash_on_delivery" : p));
+        setPayment((p) => (p === "offline_payment" ? "digital_payment" : p));
       }
     })();
 
@@ -304,12 +304,6 @@ export function CheckoutFlow() {
       return;
     }
 
-    // "bank_transfer" is a CLIENT-SIDE payment method that maps to
-    // the backend's `wallet` method — the customer transfers into
-    // their DVA, the webhook credits the wallet, and we deduct.
-    const backendPaymentMethod =
-      payment === "bank_transfer" ? "wallet" : payment;
-
     const res = await placeOrder({
       storeId: cartStoreId!,
       moduleId: phase.moduleId,
@@ -327,7 +321,7 @@ export function CheckoutFlow() {
           : undefined),
       contactPersonNumber: address.contactPersonNumber ?? user?.phone ?? undefined,
       contactPersonEmail: address.contactPersonEmail ?? user?.email ?? undefined,
-      paymentMethod: backendPaymentMethod,
+      paymentMethod: payment,
       orderType: "delivery",
       dmTips: tip,
     });
@@ -335,13 +329,6 @@ export function CheckoutFlow() {
     if (!res.ok) {
       setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
       toast.error(res.message);
-      return;
-    }
-
-    // COD: nothing more to do — go straight to success.
-    if (payment === "cash_on_delivery") {
-      clear();
-      router.replace(`/checkout/success?order_id=${res.orderId}`);
       return;
     }
 
@@ -399,15 +386,22 @@ export function CheckoutFlow() {
         return;
       }
 
-      const confirmRes = await confirmPaystackPayment(
-        res.orderId,
-        pop.reference,
-      );
+      // The money has been captured by now, so a dropped connection must
+      // not read as a failed payment. Retry the confirm a few times before
+      // giving up; the endpoint is idempotent (already_paid returns 200).
+      let confirmRes = await confirmPaystackPayment(res.orderId, pop.reference);
+      for (let attempt = 1; !confirmRes.ok && attempt < 4; attempt++) {
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+        confirmRes = await confirmPaystackPayment(res.orderId, pop.reference);
+      }
       if (!confirmRes.ok) {
-        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+        // The cart is cleared so a retry can't charge the customer twice
+        // for the same order.
+        clear();
         toast.error(
-          `Paystack charged your card but we couldn't confirm server-side: ${confirmRes.message}. Ops has been notified.`,
+          `We received your payment but couldn't activate order #${res.orderId} yet. Please don't pay again; contact support with reference ${pop.reference}.`,
         );
+        router.replace(`/orders/${res.orderId}`);
         return;
       }
 
@@ -432,17 +426,6 @@ export function CheckoutFlow() {
       } else {
         toast.error(pay.message || "Wallet payment failed.");
       }
-      return;
-    }
-
-    // Bank transfer via DVA — order is placed, send the customer to
-    // the transfer instructions page where they make the transfer and
-    // then click "I've sent it" to finalise.
-    if (payment === "bank_transfer") {
-      clear();
-      router.replace(
-        `/checkout/transfer/${res.orderId}?amount=${encodeURIComponent(res.amount)}`,
-      );
       return;
     }
 
@@ -477,7 +460,7 @@ export function CheckoutFlow() {
           <CheckoutSection
             step="02"
             title="How you'd like to pay"
-            subtitle="Card, wallet, transfer or cash on arrival."
+            subtitle="Pay online, from your wallet, or by transfer."
           >
             <PaymentPicker
               value={payment}
