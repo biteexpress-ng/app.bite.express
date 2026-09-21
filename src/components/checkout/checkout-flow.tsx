@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, Loader2, ShoppingBag } from "lucide-react";
@@ -12,6 +12,7 @@ import {
   confirmPaystackPayment,
   walletPayOrder,
 } from "@/lib/api/orders";
+import { fetchOrderQuote } from "@/lib/api/order-quote";
 import { sendPriceRequest } from "@/lib/api/price-check";
 import { isPriceRequestCart } from "@/lib/price-check/eligibility";
 import { buildItemNotes } from "@/lib/price-check/item-notes";
@@ -27,7 +28,7 @@ import {
   canUseOfflinePayment,
   type OfflinePaymentMethod,
 } from "@/lib/offline-payment-rules";
-import { OrderSummary } from "./order-summary";
+import { OrderSummary, type QuoteState } from "./order-summary";
 import { PaymentPicker, type PaymentMethod } from "./payment-picker";
 import {
   AddressPickerCheckout,
@@ -48,6 +49,21 @@ type Phase =
     }
   | { kind: "submitting" }
   | { kind: "error"; message: string };
+
+/**
+ * Kilometres for the delivery-charge calculation. Both the pricing
+ * preview (get-Tax) and the order POST have to send the identical
+ * value: the server prices whatever number it is handed, so any
+ * difference between the two shows up as a customer charged something
+ * other than the total they were shown.
+ */
+function orderDistanceKm(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): number {
+  const d = distanceKm(from.lat, from.lng, to.lat, to.lng);
+  return Number.isFinite(d) ? Math.max(0.1, d) : 0.5;
+}
 
 /**
  * Drives the /checkout page state machine.
@@ -84,6 +100,7 @@ export function CheckoutFlow() {
   const [address, setAddress] = useState<CheckoutAddress | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("digital_payment");
   const [tip, setTip] = useState(0);
+  const [quote, setQuote] = useState<QuoteState>({ kind: "idle" });
 
   // Offline payment gating. Resolved on mount from three independent
   // sources (see canUseOfflinePayment). Defaults to false so the option
@@ -187,6 +204,65 @@ export function CheckoutFlow() {
     };
   }, [address?.lat, address?.lng]);
 
+  // Ask the backend what this order actually costs. get-Tax runs the
+  // same delivery-charge and pricing code order placement runs, so the
+  // customer sees the delivery fee, service charge and grand total
+  // BEFORE choosing how to pay — previously checkout only showed the
+  // item subtotal, and someone paying from their wallet would top up
+  // that amount and still be told their balance was too low.
+  //
+  // Re-runs whenever anything the server prices on changes: the cart,
+  // the delivery address, or the tip.
+  const quoteSeq = useRef(0);
+  const ready = phase.kind === "ready" ? phase : null;
+  const quotableStoreId = ready && !ready.priceCheckEnabled ? cartStoreId : null;
+  const addrLat = address?.lat;
+  const addrLng = address?.lng;
+
+  useEffect(() => {
+    if (!quotableStoreId || !ready) return;
+    if (addrLat === undefined || addrLng === undefined) return;
+    if (!stored || lines.length === 0) return;
+    // Same zone header the order POST sends, so both calls resolve the
+    // same zone/module pivot and therefore the same delivery pricing.
+    const zoneIds =
+      stored.zoneCheck?.status === "in-zone" ? stored.zoneCheck.zoneIds : [];
+
+    const seq = ++quoteSeq.current;
+    setQuote({ kind: "loading" });
+
+    fetchOrderQuote({
+      storeId: quotableStoreId,
+      moduleId: ready.moduleId,
+      zoneIds,
+      lines,
+      lat: addrLat,
+      lng: addrLng,
+      distance: orderDistanceKm(stored, { lat: addrLat, lng: addrLng }),
+      dmTips: tip,
+    }).then((res) => {
+      // A newer address/tip/cart already fired; its answer wins.
+      if (seq !== quoteSeq.current) return;
+      setQuote(
+        res.ok
+          ? { kind: "ready", quote: res.quote }
+          : { kind: "error", message: res.message },
+      );
+    });
+    // `ready` is a fresh object on every setPhase, so depend on the
+    // two fields the quote is actually keyed on instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    quotableStoreId,
+    ready?.moduleId,
+    addrLat,
+    addrLng,
+    tip,
+    lines,
+    stored?.lat,
+    stored?.lng,
+  ]);
+
   if (!cartHydrated || !locHydrated || !authHydrated || phase.kind === "hydrating") {
     return <CenterSpinner label="Loading checkout…" />;
   }
@@ -207,6 +283,21 @@ export function CheckoutFlow() {
   async function handlePlace() {
     if (!address || !stored || stored.zoneCheck?.status !== "in-zone") return;
     if (phase.kind !== "ready") return;
+
+    // Don't create an order the wallet demonstrably can't cover.
+    // /order/place would succeed and only the follow-up wallet-payment
+    // call would fail, leaving an unpaid order behind and the customer
+    // staring at "insufficient balance" with no number to top up to.
+    if (payment === "wallet" && quote.kind === "ready") {
+      const short = quote.quote.total - (user?.wallet_balance ?? 0);
+      if (short > 0) {
+        toast.warn(
+          `Your wallet is ₦${Math.round(short).toLocaleString()} short of the ₦${Math.round(quote.quote.total).toLocaleString()} total. Top up on the Wallet page, or pay online.`,
+        );
+        return;
+      }
+    }
+
     setPhase({ kind: "submitting" });
 
     // Preflight zone check on the actual delivery address — guards
@@ -258,7 +349,7 @@ export function CheckoutFlow() {
       return;
     }
 
-    const dist = distanceKm(stored.lat, stored.lng, address.lat, address.lng);
+    const dist = orderDistanceKm(stored, address);
 
     // Stores that price on request never receive a paymentMethod or a
     // total to pay: the store quotes first, and the customer picks how
@@ -273,7 +364,7 @@ export function CheckoutFlow() {
         lines,
         lat: address.lat,
         lng: address.lng,
-        distance: Number.isFinite(dist) ? Math.max(0.1, dist) : 0.5,
+        distance: dist,
         address: address.text,
         addressType: address.addressType,
         contactPersonName:
@@ -311,7 +402,7 @@ export function CheckoutFlow() {
       lines,
       lat: address.lat,
       lng: address.lng,
-      distance: Number.isFinite(dist) ? Math.max(0.1, dist) : 0.5,
+      distance: dist,
       address: address.text,
       addressType: address.addressType,
       contactPersonName:
@@ -436,6 +527,15 @@ export function CheckoutFlow() {
 
   const placing = phase.kind === "submitting";
   const priceCheckEnabled = phase.kind === "ready" && phase.priceCheckEnabled;
+  const quoted = quote.kind === "ready" ? quote.quote : null;
+  // The figure the customer owes. Falls back to the subtotal only while
+  // the quote is in flight, and the UI marks that case with a "+".
+  const payable = quoted && !priceCheckEnabled ? quoted.total : subtotal;
+  const walletBalance = user?.wallet_balance ?? null;
+  const walletShortfall =
+    payment === "wallet" && quoted && typeof walletBalance === "number"
+      ? Math.max(0, quoted.total - walletBalance)
+      : 0;
 
   return (
     <div className="fade-up grid gap-8 pb-28 lg:grid-cols-[1.6fr_1fr] lg:pb-0">
@@ -466,7 +566,7 @@ export function CheckoutFlow() {
               value={payment}
               onChange={setPayment}
               walletBalance={user?.wallet_balance ?? null}
-              orderTotal={subtotal}
+              orderTotal={quoted ? quoted.total : null}
               offlineEnabled={offlineEnabled}
               offlineMethods={offlineMethods}
               offlineMethodId={offlineMethodId}
@@ -508,6 +608,7 @@ export function CheckoutFlow() {
           lines={lines}
           subtotal={subtotal}
           priceCheckEnabled={priceCheckEnabled}
+          quote={quote}
         />
         <button
           type="button"
@@ -528,14 +629,21 @@ export function CheckoutFlow() {
             </>
           )}
         </button>
-        {priceCheckEnabled ? (
+        {walletShortfall > 0 && (
+          <div className="rounded-2xl border border-error/30 bg-error/5 p-4 text-sm leading-relaxed text-ink-700">
+            Your wallet is ₦{Math.round(walletShortfall).toLocaleString()} short
+            of the ₦{Math.round(payable).toLocaleString()} total. Top up that
+            much on the{" "}
+            <Link href="/wallet" className="font-medium text-brand-red underline">
+              Wallet page
+            </Link>
+            , or pay online instead.
+          </div>
+        )}
+        {priceCheckEnabled && (
           <p className="text-center text-xs leading-relaxed text-ink-500">
             This store confirms today&apos;s prices before you pay. Nothing
             is charged yet.
-          </p>
-        ) : (
-          <p className="hidden text-center text-xs text-ink-500 lg:block">
-            You'll see the final total (with delivery) on the success screen.
           </p>
         )}
       </aside>
@@ -544,11 +652,15 @@ export function CheckoutFlow() {
         <div className="mx-auto flex max-w-md items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-500">
-              {priceCheckEnabled ? "Estimated subtotal" : "Subtotal"}
+              {priceCheckEnabled
+                ? "Estimated subtotal"
+                : quoted
+                  ? "Total to pay"
+                  : "Subtotal"}
             </p>
             <p className="text-base font-semibold text-ink-900">
-              ₦{Math.round(subtotal).toLocaleString()}
-              {!priceCheckEnabled && (
+              ₦{Math.round(payable).toLocaleString()}
+              {!priceCheckEnabled && !quoted && (
                 <span className="ml-1 text-xs font-normal text-ink-500">
                   + delivery
                 </span>
