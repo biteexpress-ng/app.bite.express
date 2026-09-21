@@ -46,23 +46,52 @@ type Phase =
        *  at submit time) so it survives every intermediate setPhase
        *  call between the store fetch and the submit handler. */
       priceCheckEnabled: boolean;
+      /** Where the rider collects from. Delivery is priced on the
+       *  distance from here to the dropoff. Null if the store row has
+       *  no coordinates. */
+      storeLat: number | null;
+      storeLng: number | null;
     }
   | { kind: "submitting" }
   | { kind: "error"; message: string };
 
 /**
- * Kilometres for the delivery-charge calculation. Both the pricing
- * preview (get-Tax) and the order POST have to send the identical
- * value: the server prices whatever number it is handed, so any
- * difference between the two shows up as a customer charged something
- * other than the total they were shown.
+ * Kilometres for the delivery-charge calculation: STORE to dropoff,
+ * which is what the backend prices per-km and what the distance bands
+ * are measured against. The Flutter app sends the same leg.
+ *
+ * It used to be measured from the home-page pin to the delivery
+ * address, which is the same point whenever the customer hasn't saved
+ * a separate address — distance ~0, so every web order was charged
+ * `minimum_shipping_charge` however far the rider had to ride.
+ *
+ * Both the pricing preview (get-Tax) and the order POST call this, so
+ * the distance they price on cannot drift apart.
+ *
+ * Straight-line, where the app asks Google for the driving route. That
+ * makes web quotes equal to or slightly under the app's for the same
+ * order, never over. Banded zones are unaffected: the server already
+ * floors the band lookup at the straight-line store-to-dropoff length.
  */
 function orderDistanceKm(
-  from: { lat: number; lng: number },
+  store: { lat: number | null; lng: number | null },
   to: { lat: number; lng: number },
+  /** Used only when the store row carries no coordinates, so an
+   *  incomplete store record can't stop someone checking out. */
+  fallbackFrom: { lat: number; lng: number },
 ): number {
+  const from =
+    store.lat !== null && store.lng !== null
+      ? { lat: store.lat, lng: store.lng }
+      : fallbackFrom;
   const d = distanceKm(from.lat, from.lng, to.lat, to.lng);
   return Number.isFinite(d) ? Math.max(0.1, d) : 0.5;
+}
+
+/** Store lat/lng arrive as MySQL decimal strings. */
+function coord(v: number | string | undefined): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) && n !== 0 ? n : null;
 }
 
 /**
@@ -130,7 +159,14 @@ export function CheckoutFlow() {
   useEffect(() => {
     if (!cartHydrated || !locHydrated || !authHydrated) return;
     if (!cartStoreId) {
-      setPhase({ kind: "ready", moduleId: 0, storeZoneId: null, priceCheckEnabled: false });
+      setPhase({
+        kind: "ready",
+        moduleId: 0,
+        storeZoneId: null,
+        priceCheckEnabled: false,
+        storeLat: null,
+        storeLng: null,
+      });
       return;
     }
 
@@ -146,6 +182,8 @@ export function CheckoutFlow() {
           moduleId: res.store.module_id ?? 0,
           storeZoneId: res.store.zone_id ?? null,
           priceCheckEnabled: isPriceRequestCart(res.store),
+          storeLat: coord(res.store.latitude),
+          storeLng: coord(res.store.longitude),
         });
       } else {
         setPhase({ kind: "error", message: res.message });
@@ -238,7 +276,11 @@ export function CheckoutFlow() {
       lines,
       lat: addrLat,
       lng: addrLng,
-      distance: orderDistanceKm(stored, { lat: addrLat, lng: addrLng }),
+      distance: orderDistanceKm(
+        { lat: ready.storeLat, lng: ready.storeLng },
+        { lat: addrLat, lng: addrLng },
+        stored,
+      ),
       dmTips: tip,
     }).then((res) => {
       // A newer address/tip/cart already fired; its answer wins.
@@ -255,6 +297,8 @@ export function CheckoutFlow() {
   }, [
     quotableStoreId,
     ready?.moduleId,
+    ready?.storeLat,
+    ready?.storeLng,
     addrLat,
     addrLng,
     tip,
@@ -309,19 +353,19 @@ export function CheckoutFlow() {
     // bail before the request goes out.
     const addressZoneCheck = await checkZone(address.lat, address.lng);
     if (addressZoneCheck.kind === "out-of-zone") {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+      setPhase(phase);
       toast.error(
         "We don't deliver to that address yet. Pick another and try again.",
       );
       return;
     }
     if (addressZoneCheck.kind === "temp-unavailable") {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+      setPhase(phase);
       toast.warn("Delivery is paused in that area right now.");
       return;
     }
     if (addressZoneCheck.kind === "error") {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+      setPhase(phase);
       toast.error(addressZoneCheck.message);
       return;
     }
@@ -342,14 +386,18 @@ export function CheckoutFlow() {
       phase.storeZoneId !== null &&
       !eligibleZoneIds.includes(phase.storeZoneId)
     ) {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+      setPhase(phase);
       toast.error(
         "This shop doesn't deliver to the chosen address. Pick another address or browse shops near it.",
       );
       return;
     }
 
-    const dist = orderDistanceKm(stored, address);
+    const dist = orderDistanceKm(
+      { lat: phase.storeLat, lng: phase.storeLng },
+      address,
+      stored,
+    );
 
     // Stores that price on request never receive a paymentMethod or a
     // total to pay: the store quotes first, and the customer picks how
@@ -380,12 +428,7 @@ export function CheckoutFlow() {
       });
 
       if (!req.ok) {
-        setPhase({
-          kind: "ready",
-          moduleId: phase.moduleId,
-          storeZoneId: phase.storeZoneId,
-          priceCheckEnabled: phase.priceCheckEnabled,
-        });
+        setPhase(phase);
         toast.error(req.message);
         return;
       }
@@ -418,7 +461,7 @@ export function CheckoutFlow() {
     });
 
     if (!res.ok) {
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+      setPhase(phase);
       toast.error(res.message);
       return;
     }
@@ -444,7 +487,7 @@ export function CheckoutFlow() {
       const customerEmail =
         address.contactPersonEmail ?? user?.email ?? null;
       if (!customerEmail) {
-        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+        setPhase(phase);
         toast.warn(
           "We need an email on file to charge a card. Add one on the Edit profile page and try again.",
         );
@@ -465,14 +508,14 @@ export function CheckoutFlow() {
       });
 
       if (pop.status === "cancelled") {
-        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+        setPhase(phase);
         toast.warn(
           `Payment cancelled. Order #${res.orderId} is on hold — re-place it when you're ready.`,
         );
         return;
       }
       if (pop.status === "error") {
-        setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+        setPhase(phase);
         toast.error(pop.message);
         return;
       }
@@ -509,7 +552,7 @@ export function CheckoutFlow() {
         router.replace(`/checkout/success?order_id=${res.orderId}`);
         return;
       }
-      setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+      setPhase(phase);
       if (pay.reason === "insufficient") {
         toast.warn(
           "Wallet balance is too low. Top up via your DVA on the Wallet page, then re-place the order.",
@@ -521,7 +564,7 @@ export function CheckoutFlow() {
     }
 
     // Should never reach here — PaymentMethod is fully covered above.
-    setPhase({ kind: "ready", moduleId: phase.moduleId, storeZoneId: phase.storeZoneId, priceCheckEnabled: phase.priceCheckEnabled });
+    setPhase(phase);
     toast.error("Please pick a payment method and try again.");
   }
 

@@ -77,6 +77,11 @@ export type StoreDetail = {
   take_away?: 0 | 1;
   module_id?: number;
   zone_id?: number;
+  /** MySQL decimals, so Laravel serialises them as strings. Needed to
+   *  price delivery: the charge is a function of store-to-dropoff
+   *  distance. */
+  latitude?: number | string;
+  longitude?: number | string;
   total_items?: number;
   category_ids?: number[];
   category_details?: StoreCategory[];
