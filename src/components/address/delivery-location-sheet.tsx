@@ -18,7 +18,7 @@ import { useIsAuthenticated } from "@/lib/auth-store";
 import { useLocation, type DeliveryLocation } from "@/lib/location-store";
 import { fetchAddresses, type SavedAddress } from "@/lib/api/addresses";
 import { checkZone } from "@/lib/api/zones";
-import { useGoogleMaps } from "@/lib/maps";
+import { useCurrentLocation } from "@/lib/use-current-location";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 
@@ -50,10 +50,9 @@ export function DeliveryLocationSheet({ open, onClose }: Props) {
   const stored = useLocation((s) => s.location);
   const setLocation = useLocation((s) => s.set);
   const setZoneCheck = useLocation((s) => s.setZoneCheck);
-  const { isLoaded } = useGoogleMaps();
+  const { locating, locate } = useCurrentLocation();
 
   const [saved, setSaved] = useState<SavedState>({ kind: "idle" });
-  const [locating, setLocating] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const verifyZone = useCallback(
@@ -117,42 +116,9 @@ export function DeliveryLocationSheet({ open, onClose }: Props) {
     };
   }, [open, onClose]);
 
-  function handleUseCurrentLocation() {
-    if (!navigator.geolocation) {
-      toast.error("Your browser doesn't support location access.");
-      return;
-    }
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords;
-        let formattedAddress = "Your current location";
-        if (isLoaded && typeof google !== "undefined") {
-          try {
-            const geocoder = new google.maps.Geocoder();
-            const { results } = await geocoder.geocode({
-              location: { lat, lng },
-            });
-            if (results?.[0]?.formatted_address) {
-              formattedAddress = results[0].formatted_address;
-            }
-          } catch {
-            /* keep the generic label */
-          }
-        }
-        setLocating(false);
-        applyLocation({ formattedAddress, lat, lng });
-      },
-      (err) => {
-        setLocating(false);
-        toast.error(
-          err.code === err.PERMISSION_DENIED
-            ? "Location access was blocked. Allow it in your browser settings, or search instead."
-            : "Couldn't get your location. Try searching for your address instead.",
-        );
-      },
-      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 },
-    );
+  async function handleUseCurrentLocation() {
+    const loc = await locate();
+    if (loc) applyLocation(loc);
   }
 
   function pickSaved(a: SavedAddress) {

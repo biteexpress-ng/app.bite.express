@@ -93,14 +93,18 @@ export function WelcomeHero() {
         </p>
 
         <div
-          className="rise w-full max-w-xl"
+          className="rise relative z-10 w-full max-w-xl"
           style={{ animationDelay: "220ms" }}
         >
           <div className="rounded-pill p-[1px]" style={{
             background:
               "linear-gradient(135deg, rgba(255,255,255,0.25), rgba(255,255,255,0.04) 35%, rgba(255,42,20,0.32))",
           }}>
-            <AddressPicker variant="dark" onPick={setPicked} />
+            <AddressPicker
+              variant="dark"
+              onPick={setPicked}
+              showCurrentLocation
+            />
           </div>
           {active && <ZoneResult location={active} />}
         </div>

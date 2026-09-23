@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Autocomplete } from "@react-google-maps/api";
-import { MapPin, Search } from "lucide-react";
+import { Crosshair, Loader2, MapPin, Search } from "lucide-react";
 import { useGoogleMaps } from "@/lib/maps";
+import { useCurrentLocation } from "@/lib/use-current-location";
 import { useLocation, type DeliveryLocation } from "@/lib/location-store";
 import { cn } from "@/lib/cn";
 
@@ -23,6 +24,10 @@ type AddressPickerProps = {
    *  form to seed with the existing saved address. When set, also
    *  suppresses the welcome-style re-hydrate-from-store behaviour. */
   initialValue?: string;
+  /** Offer a "Use my current location" row when the input is tapped.
+   *  Off by default; screens that already render their own
+   *  current-location button (the header sheet) leave it off. */
+  showCurrentLocation?: boolean;
 };
 
 /**
@@ -45,6 +50,7 @@ export function AddressPicker({
   onPick,
   persistToStore = true,
   initialValue,
+  showCurrentLocation = false,
 }: AddressPickerProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const hasKey = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
@@ -55,6 +61,11 @@ export function AddressPicker({
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [value, setValue] = useState(initialValue ?? "");
+  const { locating, locate } = useCurrentLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  // True once the user edits the text, i.e. Google is now showing
+  // suggestions for their query rather than the pre-filled address.
+  const [typed, setTyped] = useState(false);
 
   useEffect(() => {
     if (persistToStore) hydrate();
@@ -85,7 +96,13 @@ export function AddressPicker({
       placeId: place.place_id,
     };
 
+    commit(loc);
+  }
+
+  function commit(loc: DeliveryLocation) {
     setValue(loc.formattedAddress);
+    setTyped(false);
+    setMenuOpen(false);
     if (persistToStore) setLocation(loc);
     onPick?.(loc);
   }
@@ -128,8 +145,28 @@ export function AddressPicker({
     );
   }
 
+  async function handleUseCurrentLocation() {
+    const loc = await locate();
+    if (!loc) return;
+    commit(loc);
+    inputRef.current?.blur();
+  }
+
+  // Our menu and Google's suggestion list share the space under the
+  // input, so the menu only shows until the user starts a new query.
+  const menuVisible =
+    showCurrentLocation && (locating || (menuOpen && (!value.trim() || !typed)));
+
   return (
-    <div className={cn("w-full", className)}>
+    <div
+      className={cn("relative w-full", className)}
+      onFocus={() => setMenuOpen(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setMenuOpen(false);
+        }
+      }}
+    >
       <Autocomplete
         onLoad={(ac) => {
           autocompleteRef.current = ac;
@@ -148,9 +185,46 @@ export function AddressPicker({
           ref={inputRef}
           variant={variant}
           value={value}
-          onChange={setValue}
+          onChange={(v) => {
+            setValue(v);
+            setTyped(true);
+          }}
+          onClick={() => setMenuOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setMenuOpen(false);
+          }}
         />
       </Autocomplete>
+
+      {menuVisible && (
+        <div className="toast-enter absolute inset-x-0 top-full z-20 mt-2 rounded-2xl border border-ink-200 bg-white p-1.5 text-left shadow-floating">
+          <button
+            type="button"
+            // Keeps focus in the input so Safari (which never focuses
+            // clicked buttons) doesn't blur-close the menu mid-click.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleUseCurrentLocation}
+            disabled={locating}
+            className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-ink-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red disabled:cursor-wait"
+          >
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
+              {locating ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Crosshair size={16} />
+              )}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-ink-900">
+                {locating ? "Finding you…" : "Use my current location"}
+              </span>
+              <span className="mt-0.5 block text-xs text-ink-500">
+                Fill in your address from this device&apos;s location
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -188,8 +262,12 @@ function PickerInput({
   value,
   onChange,
   disabled,
+  onClick,
+  onKeyDown,
 }: InputCommonProps & {
   ref?: React.Ref<HTMLInputElement>;
+  onClick?: () => void;
+  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
 }) {
   return (
     <div className={cn(wrapperBase, wrapperVariants[variant])}>
@@ -206,6 +284,8 @@ function PickerInput({
         placeholder="Enter your delivery address"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onClick={onClick}
+        onKeyDown={onKeyDown}
         disabled={disabled}
         className={cn(inputBase, inputVariants[variant])}
         aria-label="Delivery address"
