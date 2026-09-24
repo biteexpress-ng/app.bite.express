@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
   compress: true,
 
   images: {
+    // Vercel's optimizer answers 402 once the plan's image quota is spent,
+    // which blanks every <Image>. Dashboard uploads are already webp, so
+    // serve originals directly.
+    unoptimized: true,
     formats: ["image/avif", "image/webp"],
     remotePatterns: [
       { protocol: "https", hostname: "app.bite.express" },
