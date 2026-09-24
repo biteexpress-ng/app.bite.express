@@ -4,19 +4,27 @@ import Image from "next/image";
 import { Star, Clock, MapPin, Truck, BadgeAlert } from "lucide-react";
 import type { StoreDetail } from "@/lib/api/store-detail";
 import { HeartButton } from "@/components/wishlist/heart-button";
+import { formatDistance } from "@/lib/geo";
 
 /**
  * Premium store header: cinematic cover with gradient scrim,
  * floating logo, serif name, refined stat bar, announcement.
  */
-export function StoreHeader({ store }: { store: StoreDetail }) {
+export function StoreHeader({
+  store,
+  showDistance,
+}: {
+  store: StoreDetail;
+  /** False when the detail call went out without the customer's lat/lng,
+   *  in which case the API's distance is measured from a null point. */
+  showDistance: boolean;
+}) {
   const isOpen = store.open !== 0;
   const cover = store.cover_photo_full_url ?? null;
   const logo = store.logo_full_url ?? null;
   const rating =
     typeof store.avg_rating === "number" ? store.avg_rating : null;
-  const distanceKm =
-    typeof store.distance === "number" ? store.distance.toFixed(1) : null;
+  const distance = showDistance ? formatDistance(store.distance) : null;
 
   return (
     <header className="fade-up">
@@ -92,9 +100,9 @@ export function StoreHeader({ store }: { store: StoreDetail }) {
             {store.delivery_time}
           </span>
         )}
-        {distanceKm && (
+        {distance && (
           <span className="inline-flex items-center rounded-pill border border-ink-200 bg-white px-3 py-1.5 text-sm text-ink-700">
-            {distanceKm} km away
+            {distance} away
           </span>
         )}
         {store.free_delivery && (

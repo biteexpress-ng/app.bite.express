@@ -190,7 +190,7 @@ export function StoreDetailView({ storeId }: { storeId: number }) {
         <ArrowLeft size={13} /> Back to shops
       </Link>
 
-      <StoreHeader store={store} />
+      <StoreHeader store={store} showDistance={stored != null} />
 
       <div className="mt-8">
         {needsZone ? (

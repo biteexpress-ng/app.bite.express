@@ -6,19 +6,29 @@ import { Star, Clock, BadgePercent, Truck } from "lucide-react";
 import type { Store } from "@/lib/api/stores";
 import { HeartButton } from "@/components/wishlist/heart-button";
 import { cn } from "@/lib/cn";
+import { formatDistance } from "@/lib/geo";
 
 /**
  * Premium visual card for a store on the browse list.
  * Links to /store/[id].
+ *
+ * `showDistance` must be false when the list was fetched without the
+ * customer's lat/lng: the API still returns a distance, measured from
+ * a null point.
  */
-export function StoreCard({ store }: { store: Store }) {
+export function StoreCard({
+  store,
+  showDistance = true,
+}: {
+  store: Store;
+  showDistance?: boolean;
+}) {
   const isOpen = store.open !== 0;
   const rating = typeof store.avg_rating === "number" ? store.avg_rating : null;
   const cover = store.cover_photo_full_url ?? null;
   const logo = store.logo_full_url ?? null;
   const discount = store.discount?.discount ?? 0;
-  const distanceKm =
-    typeof store.distance === "number" ? store.distance.toFixed(1) : null;
+  const distance = showDistance ? formatDistance(store.distance) : null;
 
   return (
     <Link
@@ -105,9 +115,7 @@ export function StoreCard({ store }: { store: Store }) {
                 {store.delivery_time}
               </span>
             )}
-            {distanceKm && (
-              <span className="text-ink-400">{distanceKm} km</span>
-            )}
+            {distance && <span className="text-ink-400">{distance}</span>}
           </p>
         </div>
       </div>

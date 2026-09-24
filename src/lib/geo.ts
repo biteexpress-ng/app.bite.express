@@ -23,3 +23,16 @@ export function distanceKm(
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
+
+/**
+ * Formats a store's `distance` field for display. The backend computes
+ * it with ST_Distance_Sphere, so the value is in METRES, not km.
+ */
+export function formatDistance(metres: number | null | undefined): string | null {
+  if (typeof metres !== "number" || !Number.isFinite(metres) || metres < 0) {
+    return null;
+  }
+  if (Math.round(metres) < 1000) return `${Math.round(metres)} m`;
+  const km = metres / 1000;
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
+}

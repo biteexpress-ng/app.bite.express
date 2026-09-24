@@ -103,7 +103,7 @@ export function WishlistView() {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {state.stores.map((s) => (
-              <StoreCard key={s.id} store={s} />
+              <StoreCard key={s.id} store={s} showDistance={false} />
             ))}
           </div>
         </section>
