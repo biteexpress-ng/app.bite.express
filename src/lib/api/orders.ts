@@ -330,8 +330,13 @@ export function toWireCart(lines: CartLine[]) {
     // key variant" (PHP 8), which the controller catches and returns
     // as a 403. That is the real cause of checkout failing on the web app.
     // The Flutter app sends "" here for food-variation items too.
-    variant: "",
-    variation: toWireVariation(l.selections),
+    // A legacy size (grocery/pharmacy) goes the other way: PlaceNewOrder
+    // prices it from variation[0].type via Helpers::variation_price, and
+    // stores `variant` on the order line so the store can read the size.
+    variant: l.variant?.type ?? "",
+    variation: l.variant
+      ? [{ type: l.variant.type }]
+      : toWireVariation(l.selections),
     add_on_ids: l.addOns.map((a) => a.id),
     add_on_qtys: l.addOns.map((a) => a.qty),
   }));

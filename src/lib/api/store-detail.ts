@@ -2,6 +2,7 @@
 
 import { api } from "@/lib/api-client";
 import type { FoodVariation } from "@/lib/food-variations";
+import type { ChoiceOption, LegacyVariation } from "@/lib/legacy-variations";
 
 /** Single optional add-on row (e.g. "Extra cheese — ₦200").
  *  Mirrors App\Models\AddOn fields after Helpers::addon_data_formatting. */
@@ -145,8 +146,10 @@ export type StoreItem = {
   veg?: 0 | 1;
   /** Modern food module variations (groups of required/optional choices). */
   food_variations?: FoodVariation[];
-  /** Legacy variation shape — usually empty for new items. */
-  variations?: unknown[];
+  /** Legacy sizes for grocery/pharmacy/ecommerce items. Each row
+   *  carries the FULL price for that size. See legacy-variations.ts. */
+  variations?: LegacyVariation[] | null;
+  choice_options?: ChoiceOption[] | null;
   /** Optional add-ons attached to this item, with full AddOn rows
    *  after Helpers::addon_data_formatting on the backend. */
   add_ons?: AddOn[];

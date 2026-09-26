@@ -10,7 +10,16 @@ import {
   validateSelections,
   type VariationSelection,
 } from "@/lib/food-variations";
+import {
+  cheapestVariantPrice,
+  hasLegacyChoices,
+  missingChoices,
+  resolveVariant,
+  variantLabel,
+  type ChoicePicks,
+} from "@/lib/legacy-variations";
 import { VariationPicker } from "./variation-picker";
+import { ChoicePicker } from "./choice-picker";
 import { AddonPicker } from "./addon-picker";
 import { CartConflictDialog } from "./cart-conflict-dialog";
 import { cn } from "@/lib/cn";
@@ -40,6 +49,7 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
   const add = useCart((s) => s.add);
   const [qty, setQty] = useState(1);
   const [selections, setSelections] = useState<VariationSelection[]>([]);
+  const [picks, setPicks] = useState<ChoicePicks>({});
   const [addOns, setAddOns] = useState<AddOnSelection[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [conflict, setConflict] = useState(false);
@@ -49,6 +59,7 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
     if (open) {
       setQty(1);
       setSelections([]);
+      setPicks({});
       setAddOns([]);
       setSubmitting(false);
       setConflict(false);
@@ -59,17 +70,30 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
   if (!open || !item) return null;
 
   const variations = item.food_variations ?? [];
-  const errors = validateSelections(variations, selections);
 
-  const price = item.price ?? 0;
+  // Grocery/pharmacy sizes: the chosen size's full price replaces item.price.
+  const legacy = hasLegacyChoices(item);
+  const variant = legacy ? resolveVariant(item, picks) : null;
+  const legacyErrors: string[] = !legacy || variant
+    ? []
+    : missingChoices(item, picks).length > 0
+      ? missingChoices(item, picks).map((title) => `Pick an option for "${title}".`)
+      : ["That combination isn't available. Pick another option."];
+  const errors = [...validateSelections(variations, selections), ...legacyErrors];
+
   const discount = item.discount ?? 0;
   const discountType = item.discount_type ?? null;
-  const basePrice =
+  const discounted = (full: number) =>
     discount > 0
       ? discountType === "amount"
-        ? Math.max(0, price - discount)
-        : Math.max(0, price - (price * discount) / 100)
-      : price;
+        ? Math.max(0, full - discount)
+        : Math.max(0, full - (full * discount) / 100)
+      : full;
+  const price = legacy
+    ? Number(variant?.price ?? cheapestVariantPrice(item) ?? item.price ?? 0)
+    : (item.price ?? 0);
+  const basePrice = discounted(price);
+  const showsFrom = legacy && !variant;
   const uplift = selectionsUplift(variations, selections);
   const addOnUplift = addOns.reduce((sum, a) => sum + a.price * a.qty, 0);
   const unit = basePrice + uplift + addOnUplift;
@@ -77,9 +101,10 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
   // See item-card.tsx — stock=0 is the default for food module items;
   // we let the backend's order-place endpoint enforce real stock.
   const inStock = true;
+  const stockCap = variant ? variant.stock : item.stock;
   const maxQty =
-    typeof item.stock === "number" && item.stock > 0
-      ? Math.min(item.stock, item.maximum_cart_quantity ?? 99)
+    typeof stockCap === "number" && stockCap > 0
+      ? Math.min(stockCap, item.maximum_cart_quantity ?? 99)
       : (item.maximum_cart_quantity ?? 99);
 
   const availableAddOns = item.add_ons ?? [];
@@ -102,6 +127,9 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
         qty,
         selections,
         addOns,
+        variant: variant
+          ? { type: variant.type, label: variantLabel(item, picks) }
+          : undefined,
       },
       { force },
     );
@@ -165,6 +193,9 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
             )}
 
             <div className="mt-4 flex items-baseline gap-2">
+              {showsFrom && (
+                <span className="text-sm font-medium text-ink-500">From</span>
+              )}
               <span className="text-2xl font-semibold tracking-[-0.01em] text-ink-900">
                 ₦{Math.round(basePrice).toLocaleString()}
               </span>
@@ -174,6 +205,21 @@ export function AddToCartSheet({ item, open, onClose }: Props) {
                 </span>
               )}
             </div>
+
+            {legacy && (
+              <div className="mt-5">
+                <ChoicePicker
+                  choices={item.choice_options ?? []}
+                  variations={item.variations ?? []}
+                  picks={picks}
+                  priceOf={discounted}
+                  onChange={(next) => {
+                    setPicks(next);
+                    if (showErrors) setShowErrors(false);
+                  }}
+                />
+              </div>
+            )}
 
             {variations.length > 0 && (
               <div className="mt-5">

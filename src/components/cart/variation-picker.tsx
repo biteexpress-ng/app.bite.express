@@ -84,7 +84,7 @@ export function VariationPicker({ variations, selections, onChange }: Props) {
                   <label
                     key={val.label}
                     className={cn(
-                      "flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm transition-colors",
+                      "flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-red",
                       checked
                         ? "border-brand-red bg-brand-red/5"
                         : "border-ink-200 bg-white hover:border-ink-300",

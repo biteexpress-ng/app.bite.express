@@ -125,8 +125,22 @@ export function validateSelections(
  *
  * Names + values + add-on ids are all sorted for determinism so
  * picking the same options in a different order still merges.
+ *
+ * `variantType` is a legacy size (grocery/pharmacy), appended as
+ * `|~400gtin` so each size is its own line. Keys without one are
+ * unchanged.
  */
 export function cartKeyFor(
+  itemId: number,
+  selections: VariationSelection[],
+  addOns?: ReadonlyArray<{ id: number; qty: number }>,
+  variantType?: string,
+): string {
+  const base = foodCartKey(itemId, selections, addOns);
+  return variantType ? `${base}|~${variantType}` : base;
+}
+
+function foodCartKey(
   itemId: number,
   selections: VariationSelection[],
   addOns?: ReadonlyArray<{ id: number; qty: number }>,

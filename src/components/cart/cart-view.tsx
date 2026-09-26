@@ -145,6 +145,11 @@ export function CartView() {
                   <p className="line-clamp-2 text-sm font-semibold tracking-[-0.005em] text-ink-900">
                     {l.name}
                   </p>
+                  {l.variant && (
+                    <p className="mt-1 line-clamp-1 text-xs text-ink-500">
+                      {l.variant.label}
+                    </p>
+                  )}
                   {l.selections.length > 0 && (
                     <p className="mt-1 line-clamp-1 text-xs text-ink-500">
                       {selectionsSummary(l.selections)}

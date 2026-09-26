@@ -6,6 +6,7 @@ import { Plus, Star } from "lucide-react";
 import type { StoreItem } from "@/lib/api/store-detail";
 import { AddToCartSheet } from "@/components/cart/add-to-cart-sheet";
 import { HeartButton } from "@/components/wishlist/heart-button";
+import { cheapestVariantPrice, hasLegacyChoices } from "@/lib/legacy-variations";
 import { cn } from "@/lib/cn";
 
 /**
@@ -17,7 +18,11 @@ export function ItemCard({ item }: { item: StoreItem }) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const img = item.image_full_url ?? null;
-  const price = item.price ?? 0;
+  // Items with sizes are priced per size, so the card shows the cheapest.
+  const hasSizes = hasLegacyChoices(item);
+  const price = hasSizes
+    ? (cheapestVariantPrice(item) ?? item.price ?? 0)
+    : (item.price ?? 0);
   const discount = item.discount ?? 0;
   const discountType = item.discount_type ?? null;
 
@@ -100,6 +105,9 @@ export function ItemCard({ item }: { item: StoreItem }) {
 
           <div className="mt-auto flex items-end justify-between gap-2 pt-2">
             <div className="flex items-baseline gap-1.5">
+              {hasSizes && (
+                <span className="text-xs font-medium text-ink-500">From</span>
+              )}
               <span className="text-base font-semibold text-ink-900">
                 ₦{Math.round(finalPrice).toLocaleString()}
               </span>

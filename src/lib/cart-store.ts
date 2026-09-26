@@ -49,7 +49,12 @@ export type CartLine = {
   /** Free-text note for the store, used only by the price-request flow.
    *  One note per item id: see buildItemNotes. */
   note?: string;
+  /** Legacy size for grocery/pharmacy items (see legacy-variations.ts).
+   *  `type` is what the server matches on; `label` is what people read. */
+  variant?: CartVariant;
 };
+
+export type CartVariant = { type: string; label: string };
 
 export type AddLineInput = {
   itemId: number;
@@ -60,6 +65,7 @@ export type AddLineInput = {
   qty?: number;
   selections?: VariationSelection[];
   addOns?: AddOnSelection[];
+  variant?: CartVariant;
 };
 
 export type AddResult =
@@ -74,7 +80,8 @@ export type AddResult =
 // v4 bump — line shape gained `note`. A v3 cart has no notes to lose, so
 // this could have migrated in place, but the file's existing convention
 // is to bump rather than to branch on shape at read time.
-const STORAGE_KEY = "biteexpress.cart.v4";
+// v5 bump: line shape gained `variant` (legacy grocery/pharmacy sizes).
+const STORAGE_KEY = "biteexpress.cart.v5";
 
 type Persisted = { storeId: number | null; lines: CartLine[] };
 
@@ -161,6 +168,7 @@ export const useCart = create<CartState>((set, get) => ({
       input.itemId,
       selections,
       addOns.map((a) => ({ id: a.id, qty: a.qty })),
+      input.variant?.type,
     );
 
     let nextLines: CartLine[];
@@ -190,6 +198,7 @@ export const useCart = create<CartState>((set, get) => ({
           qty,
           selections,
           addOns,
+          ...(input.variant ? { variant: input.variant } : {}),
         },
       ];
     }
