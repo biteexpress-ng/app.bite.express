@@ -20,6 +20,8 @@ export const metadata: Metadata = {
   description:
     "Order from your favourite restaurants, supermarkets, pharmacies and local stores. Live tracking, secure payments, every neighbourhood in Nigeria.",
   applicationName: siteConfig.name,
+  appleWebApp: { capable: true, title: siteConfig.name, statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
   formatDetection: { email: false, address: false, telephone: false },
   robots: { index: false, follow: false },
 };

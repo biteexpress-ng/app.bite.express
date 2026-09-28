@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Browsers must always see the newest service worker.
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
+      {
         source: "/.well-known/apple-app-site-association",
         headers: [{ key: "Content-Type", value: "application/json" }],
       },
