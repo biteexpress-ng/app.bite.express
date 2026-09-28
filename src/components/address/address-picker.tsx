@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Autocomplete } from "@react-google-maps/api";
 import { Crosshair, Loader2, MapPin, Search } from "lucide-react";
-import { useGoogleMaps } from "@/lib/maps";
+import { hasGoogleMapsKey, useGoogleMaps } from "@/lib/maps";
 import { useCurrentLocation } from "@/lib/use-current-location";
 import { useLocation, type DeliveryLocation } from "@/lib/location-store";
 import { cn } from "@/lib/cn";
@@ -64,7 +64,7 @@ export function AddressPicker({
   autoFocus = false,
 }: AddressPickerProps) {
   const { isLoaded, loadError } = useGoogleMaps();
-  const hasKey = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+  const hasKey = hasGoogleMapsKey();
   const setLocation = useLocation((s) => s.set);
   const hydrate = useLocation((s) => s.hydrate);
   const stored = useLocation((s) => s.location);
@@ -99,11 +99,15 @@ export function AddressPicker({
   // already mounted (once the handoff finishes resolving). Adjusted
   // during render rather than in an effect, mirroring React's
   // "adjust state when a prop changes" pattern, so it doesn't cost an
-  // extra render round-trip.
+  // extra render round-trip. Same guard as the store-resync effect
+  // above: if the customer started typing their own query while the
+  // handoff was still resolving, don't clobber it once the handoff
+  // comes back (e.g. ambiguous, so it seeds the same input we're now
+  // fighting over).
   const [seededQuery, setSeededQuery] = useState(initialQuery);
   if (initialQuery !== seededQuery) {
     setSeededQuery(initialQuery);
-    if (initialQuery !== undefined) {
+    if (initialQuery !== undefined && !typed) {
       setValue(initialQuery);
       setTyped(false);
     }

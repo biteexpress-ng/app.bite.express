@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { useGoogleMaps } from "@/lib/maps";
+import { hasGoogleMapsKey, useGoogleMaps } from "@/lib/maps";
 import { useLocation, type DeliveryLocation } from "@/lib/location-store";
 import { reverseGeocode } from "@/lib/use-current-location";
 import { parseHandoff, type ParsedHandoff } from "@/lib/location-handoff";
@@ -38,7 +38,7 @@ function LocationHandoffInner({ onNeedsInput }: LocationHandoffProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { isLoaded, loadError } = useGoogleMaps();
-  const hasKey = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+  const hasKey = hasGoogleMapsKey();
   const setLocation = useLocation((s) => s.set);
 
   // Parsed once, from whatever search params are present on first
@@ -81,7 +81,14 @@ function LocationHandoffInner({ onNeedsInput }: LocationHandoffProps) {
           const address = await reverseGeocode(lat, lng);
           if (address) formattedAddress = address;
         }
-        if (!cancelled) setLocation({ formattedAddress, lat, lng });
+        if (cancelled) return;
+        // setLocation and setResolving land in the same synchronous
+        // continuation (no await between them) so React batches them
+        // into one render. Otherwise ZoneResult (which reacts to the
+        // store) can paint a frame before "Finding your address…"
+        // clears, flashing the loading line underneath it.
+        setLocation({ formattedAddress, lat, lng });
+        setResolving(false);
         return;
       }
 
@@ -93,13 +100,11 @@ function LocationHandoffInner({ onNeedsInput }: LocationHandoffProps) {
       } else {
         onNeedsInput(q);
       }
+      setResolving(false);
     }
 
     run().finally(() => {
-      if (!cancelled) {
-        setPending(null);
-        setResolving(false);
-      }
+      if (!cancelled) setPending(null);
     });
 
     return () => {
