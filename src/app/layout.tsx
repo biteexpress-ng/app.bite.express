@@ -6,6 +6,7 @@ import { dmSans, dmSerifDisplay } from "@/lib/fonts";
 import { siteConfig } from "@/lib/site-config";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { PushBootstrap } from "@/components/notifications/push-bootstrap";
+import { AppDownloadBanner } from "@/components/app-nudge/app-download-banner";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import {
@@ -60,6 +61,7 @@ export default async function RootLayout({
           <AuthProvider />
           <PushBootstrap />
           <SiteHeader />
+          <AppDownloadBanner />
           <main className="flex-1">{children}</main>
           <MobileTabBar />
           <SiteFooter />
