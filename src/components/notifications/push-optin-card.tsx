@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { BellRing, Share, SquarePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { usePush } from "@/lib/push";
+import { PushError, usePush } from "@/lib/push";
 import { OPT_IN_DISMISS_MS, shouldShowOptInCard } from "@/lib/push-state";
 import { toast } from "@/lib/toast";
 
@@ -66,7 +66,8 @@ export function PushOptInCard({ orderActive }: { orderActive: boolean }) {
       if (next === "on") toast.success("Order alerts are on for this device.");
       if (next === "blocked") toast.info("Alerts are blocked in your browser settings.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Couldn't turn on order alerts. Please try again.");
+      // Only our own messages are customer-facing; a browser DOMException is not.
+      toast.error(error instanceof PushError ? error.message : "Couldn't turn on order alerts. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -77,7 +78,7 @@ export function PushOptInCard({ orderActive }: { orderActive: boolean }) {
       <button
         type="button"
         onClick={dismiss}
-        aria-label="Not now"
+        aria-label="Dismiss"
         className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700"
       >
         <X size={16} />

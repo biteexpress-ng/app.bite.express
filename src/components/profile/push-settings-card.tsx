@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { usePush } from "@/lib/push";
+import { PushError, usePush } from "@/lib/push";
 import type { PushState } from "@/lib/push-state";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
@@ -38,7 +38,12 @@ export function PushSettingsCard() {
         if (next === "blocked") toast.info("Alerts are blocked in your browser settings.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Couldn't change order alerts. Please try again.");
+      // Only our own messages are customer-facing; a browser DOMException is not.
+      const fallback =
+        state === "on"
+          ? "Couldn't turn off order alerts. Please try again."
+          : "Couldn't turn on order alerts. Please try again.";
+      toast.error(error instanceof PushError ? error.message : fallback);
     } finally {
       setBusy(false);
     }
