@@ -39,6 +39,17 @@ export function riderFixFromTrack(rider: RiderLocationFields | null | undefined)
   return { lat, lng, at };
 }
 
+/**
+ * The rider from a track response. The endpoint returns `delivery_man` as a
+ * single object (the Eloquent relation wins over the array the controller
+ * builds), while older code expected an array; accept both.
+ */
+export function trackRider<T>(value: T | T[] | null | undefined): T | null {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
+
 export function newerFix(a: RiderFix | null, b: RiderFix | null): RiderFix | null {
   if (!a) return b;
   if (!b) return a;

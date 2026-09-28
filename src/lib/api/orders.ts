@@ -8,6 +8,20 @@ import type { VariationSelection } from "@/lib/food-variations";
 /* Order list + detail + tracking                                  */
 /* -------------------------------------------------------------- */
 
+/** The rider on an order. The track endpoint sends one object; older
+ *  endpoints send an array of these. Read either with trackRider(). */
+export type TrackRider = {
+  id: number;
+  f_name?: string;
+  l_name?: string;
+  phone?: string;
+  image_full_url?: string | null;
+  /** From the rider's last location ping. Strings on the wire. */
+  lat?: number | string | null;
+  lng?: number | string | null;
+  location_updated_at?: string | null;
+};
+
 /** Shared by /order/list (history) and /order/running-orders.
  *  Subset of the full Order shape the backend returns — fields
  *  not used in the UI are dropped from the type for clarity. */
@@ -37,19 +51,8 @@ export type OrderSummary = {
     latitude?: number | string;
     longitude?: number | string;
   } | null;
-  delivery_man?:
-    | Array<{
-        id: number;
-        f_name?: string;
-        l_name?: string;
-        phone?: string;
-        image_full_url?: string | null;
-        /** From the rider's last location ping. Strings on the wire. */
-        lat?: number | string | null;
-        lng?: number | string | null;
-        location_updated_at?: string | null;
-      }>
-    | null;
+  /** The track endpoint sends one object; read it with trackRider(). */
+  delivery_man?: TrackRider | TrackRider[] | null;
   /** ISO datetime the quote stops being payable, or null. Present and
    *  null on every order platform-wide, including orders that never
    *  went near a price request. Read it, never compute it. */

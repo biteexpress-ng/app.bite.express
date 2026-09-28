@@ -21,6 +21,7 @@ import {
   type OrderDetailLine,
   type OrderStatus,
   type OrderTrack,
+  type TrackRider,
 } from "@/lib/api/orders";
 import { subscribeOrderStatus } from "@/lib/order-channel";
 import { parseItemDetails } from "@/lib/price-check/item-details";
@@ -38,6 +39,7 @@ import {
   riderDistanceLabel,
   riderFixFromTrack,
   subEventsByMilestone,
+  trackRider,
   type MilestoneStatus,
   type TimelineRow,
 } from "@/lib/tracking";
@@ -186,7 +188,7 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   }, [orderId, state, awaitingPayment]);
 
   const liveStatus = state.kind === "ready" ? state.order.order_status : null;
-  const hasRider = state.kind === "ready" && (state.order.delivery_man?.length ?? 0) > 0;
+  const hasRider = state.kind === "ready" && trackRider(state.order.delivery_man) !== null;
   const live = liveStatus !== null && (!TERMINAL.has(liveStatus) || awaitingPayment);
   const intervalMs = liveStatus ? pollIntervalMs(liveStatus, hasRider) : 20_000;
 
@@ -244,7 +246,7 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   }
 
   const { order, lines } = state;
-  const rider = order.delivery_man?.[0] ?? null;
+  const rider = trackRider(order.delivery_man);
   // A payment this browser started can land on an order the expiry sweep
   // has cancelled, and the server settles it. Until a read accounts for
   // that payment, this page must not tell the customer the order was
@@ -576,11 +578,7 @@ function TotalsCard({ order }: { order: OrderTrack }) {
   );
 }
 
-function RiderCard({
-  rider,
-}: {
-  rider: NonNullable<OrderTrack["delivery_man"]>[number];
-}) {
+function RiderCard({ rider }: { rider: TrackRider }) {
   const name = [rider.f_name, rider.l_name].filter(Boolean).join(" ").trim() ||
     "Your rider";
   return (

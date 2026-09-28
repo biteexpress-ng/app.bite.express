@@ -9,6 +9,7 @@ import {
   riderDistanceLabel,
   riderFixFromTrack,
   subEventsByMilestone,
+  trackRider,
 } from "./tracking";
 
 describe("pollIntervalMs", () => {
@@ -109,5 +110,23 @@ describe("subEventsByMilestone", () => {
       { event: "rider_assigned", actual_at: null, created_at: null },
     ]);
     expect(grouped).toEqual({});
+  });
+});
+
+describe("trackRider", () => {
+  const rider = { id: 7, f_name: "Ada" };
+
+  it("reads the object shape the track endpoint actually returns", () => {
+    expect(trackRider(rider)).toBe(rider);
+  });
+
+  it("still reads the array shape", () => {
+    expect(trackRider([rider])).toBe(rider);
+  });
+
+  it("returns null when there is no rider", () => {
+    expect(trackRider(null)).toBeNull();
+    expect(trackRider(undefined)).toBeNull();
+    expect(trackRider([])).toBeNull();
   });
 });
