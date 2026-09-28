@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BellRing, Share, SquarePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePush } from "@/lib/push";
@@ -41,12 +41,13 @@ function now(): number {
 export function PushOptInCard({ orderActive }: { orderActive: boolean }) {
   const state = usePush((s) => s.state);
   const enable = usePush((s) => s.enable);
-  const [dismissedUntil, setDismissedUntil] = useState<number | null>(null);
+  // Lazy initializer: the card always renders null while state is "loading"
+  // (true on the server and on first client render), so reading localStorage
+  // here can't cause a hydration mismatch.
+  const [dismissedUntil, setDismissedUntil] = useState<number | null>(() =>
+    typeof window === "undefined" ? null : readDismissedUntil(),
+  );
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    setDismissedUntil(readDismissedUntil());
-  }, []);
 
   if (state === "loading") return null;
   if (!shouldShowOptInCard(state, orderActive, dismissedUntil, now())) return null;
