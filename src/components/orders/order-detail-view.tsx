@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -31,6 +31,16 @@ import {
   type PaymentAccounting,
 } from "@/lib/price-check/pending-payment";
 import { usePendingPayment } from "@/lib/price-check/use-pending-payment";
+import { onOrderPush } from "@/lib/push-events";
+import { PushOptInCard } from "@/components/notifications/push-optin-card";
+import {
+  pollIntervalMs,
+  riderDistanceLabel,
+  riderFixFromTrack,
+  subEventsByMilestone,
+  type MilestoneStatus,
+  type TimelineRow,
+} from "@/lib/tracking";
 import { OrderStatusPill } from "./order-status-pill";
 import { RiderMap } from "./rider-map";
 import { cn } from "@/lib/cn";
@@ -76,8 +86,9 @@ const TIMELINE: Array<{
  * fresh via two mechanisms:
  *
  *   1. Reverb subscription on `order_tracking_{orderId}` (preferred)
- *   2. HTTP poll every 20s (fallback when Reverb env isn't set, or
- *      when the WebSocket drops)
+ *   2. HTTP poll: every 10s while a rider is en route, 20s otherwise,
+ *      paused while the tab is hidden, and at once when a push for
+ *      this order lands
  *
  * Both stop firing once the order reaches a terminal status, except while
  * a payment this browser started is unaccounted for: the server reopens
@@ -88,7 +99,6 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [reverbConnected, setReverbConnected] = useState(false);
   const payment = usePendingPayment(orderId);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Initial load
   useEffect(() => {
@@ -175,26 +185,52 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
     };
   }, [orderId, state, awaitingPayment]);
 
-  // HTTP polling fallback — runs in parallel with Reverb so a
-  // dropped WebSocket doesn't leave the UI stale.
-  useEffect(() => {
-    if (state.kind !== "ready") return;
-    if (TERMINAL.has(state.order.order_status) && !awaitingPayment) return;
+  const liveStatus = state.kind === "ready" ? state.order.order_status : null;
+  const hasRider = state.kind === "ready" && (state.order.delivery_man?.length ?? 0) > 0;
+  const live = liveStatus !== null && (!TERMINAL.has(liveStatus) || awaitingPayment);
+  const intervalMs = liveStatus ? pollIntervalMs(liveStatus, hasRider) : 20_000;
 
-    pollRef.current = setInterval(async () => {
+  // HTTP polling. Runs alongside Reverb so a dropped (or absent) socket
+  // doesn't leave the page stale. Depends on status, not the whole order, so
+  // each poll result doesn't restart the timer.
+  useEffect(() => {
+    if (!live) return;
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const refresh = async () => {
       const res = await fetchOrderTrack(orderId);
       if (res.ok) {
-        setState((prev) =>
-          prev.kind === "ready" ? { ...prev, order: res.order } : prev,
-        );
+        setState((prev) => (prev.kind === "ready" ? { ...prev, order: res.order } : prev));
       }
-    }, 20_000);
+    };
+    const start = () => {
+      if (timer === null) timer = setInterval(refresh, intervalMs);
+    };
+    const stop = () => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+        start();
+      } else {
+        stop();
+      }
+    };
+
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    const offPush = onOrderPush((pushedId) => {
+      if (pushedId === null || pushedId === orderId) void refresh();
+    });
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = null;
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+      offPush();
     };
-  }, [orderId, state, awaitingPayment]);
+  }, [orderId, live, intervalMs]);
 
   if (state.kind === "loading") {
     return <CenterSpinner label="Loading order…" />;
@@ -233,6 +269,9 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
     order.delivery_address?.longitude,
   );
   const pickup = parseLatLng(order.store?.latitude, order.store?.longitude);
+  const riderFix = riderFixFromTrack(rider);
+  const distanceLabel =
+    order.order_status === "picked_up" ? riderDistanceLabel(riderFix, destination) : null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
@@ -257,7 +296,15 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
             <OrderStatusPill status={order.order_status} />
           </div>
 
-          <LiveBadge reverbConnected={reverbConnected} status={order.order_status} />
+          <LiveBadge
+            reverbConnected={reverbConnected}
+            status={order.order_status}
+            intervalMs={intervalMs}
+          />
+
+          {distanceLabel && (
+            <p className="mt-3 text-sm font-medium text-ink-900">{distanceLabel}</p>
+          )}
 
           {order.order_status === "price_confirmed" && (
             <Link
@@ -274,11 +321,14 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
           )}
         </header>
 
+        <PushOptInCard orderActive={!TERMINAL.has(order.order_status)} />
+
         <Timeline
           status={order.order_status}
           orderId={order.id}
           accounting={accounting}
           charged={payment?.charged ?? false}
+          rows={order.timelines ?? []}
         />
 
         {showMap && rider && destination && (
@@ -286,6 +336,7 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
             deliverymanId={rider.id}
             destination={destination}
             pickup={pickup}
+            fix={riderFix}
           />
         )}
 
@@ -306,9 +357,11 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
 function LiveBadge({
   reverbConnected,
   status,
+  intervalMs,
 }: {
   reverbConnected: boolean;
   status: OrderStatus;
+  intervalMs: number;
 }) {
   if (TERMINAL.has(status)) return null;
   return (
@@ -321,7 +374,7 @@ function LiveBadge({
       ) : (
         <>
           <WifiOff size={11} className="text-ink-400" />
-          Auto-refreshing every 20s
+          Auto-refreshing every {Math.round(intervalMs / 1000)}s
         </>
       )}
     </div>
@@ -333,6 +386,7 @@ function Timeline({
   orderId,
   accounting,
   charged,
+  rows,
 }: {
   status: OrderStatus;
   orderId: number;
@@ -341,6 +395,7 @@ function Timeline({
    *  order. The quote screen says so outright, and this page saying we
    *  could not confirm it would leave the two contradicting each other. */
   charged: boolean;
+  rows: readonly TimelineRow[];
 }) {
   // If the order is cancelled/refunded etc, render a minimal pill
   // saying so rather than the happy-path timeline.
@@ -412,6 +467,7 @@ function Timeline({
       : status === "picked_up" || status === "accepted"
         ? TIMELINE.findIndex((m) => m.status === "handover")
         : 0;
+  const subEvents = subEventsByMilestone(rows);
 
   return (
     <CardLite>
@@ -420,7 +476,7 @@ function Timeline({
           const reached = idx <= effectiveIndex;
           const active = idx === effectiveIndex;
           return (
-            <li key={m.status} className="flex items-center gap-3">
+            <li key={m.status} className="flex items-start gap-3">
               <span
                 className={cn(
                   "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2",
@@ -431,17 +487,23 @@ function Timeline({
               >
                 {m.icon}
               </span>
-              <span
-                className={cn(
-                  "text-sm",
-                  reached
-                    ? "font-medium text-ink-900"
-                    : "text-ink-500",
-                  active && "text-brand-red",
-                )}
-              >
-                {m.label}
-              </span>
+              <div className="min-w-0 pt-1">
+                <span
+                  className={cn(
+                    "text-sm",
+                    reached ? "font-medium text-ink-900" : "text-ink-500",
+                    active && "text-brand-red",
+                  )}
+                >
+                  {m.label}
+                </span>
+                {(subEvents[m.status as MilestoneStatus] ?? []).map((s) => (
+                  <p key={s.event} className="mt-1 text-xs text-ink-500">
+                    {s.label} ·{" "}
+                    {new Date(s.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                  </p>
+                ))}
+              </div>
             </li>
           );
         })}
