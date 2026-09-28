@@ -1,9 +1,21 @@
 /*
  * BiteExpress web app service worker.
  *
- * Push only: `push` and `notificationclick`. There is no fetch handler and no
+ * Push only: `push` and `notificationclick`, plus `install` and `activate` to
+ * take control of open tabs. There is no fetch handler and no
  * caching, so this file can never serve a stale copy of the app. Keep it that way.
  */
+
+// Take control of open tabs straight away. Without this the tab that turned
+// alerts on stays uncontrolled (Next.js navigates client-side), and
+// WindowClient.navigate() rejects on a tab this worker does not control.
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
 function orderIdFrom(url) {
   const match = /^\/orders\/(\d+)/.exec(url || "");
@@ -54,11 +66,17 @@ self.addEventListener("notificationclick", (event) => {
         const exact = windows.find((client) => client.url === target);
         if (exact && "focus" in exact) return exact.focus();
 
-        const any = windows.find((client) => "focus" in client);
-        if (any) {
-          return ("navigate" in any ? any.navigate(target) : Promise.resolve(any)).then((client) =>
-            (client || any).focus(),
-          );
+        // Only reuse a tab that is already on the orders pages. A tab
+        // anywhere else (mid-checkout, say) is left alone.
+        const onOrders = windows.find((client) => {
+          const path = new URL(client.url).pathname;
+          return (path === "/orders" || path.startsWith("/orders/")) && "navigate" in client;
+        });
+        if (onOrders) {
+          return onOrders
+            .navigate(target)
+            .then((client) => (client || onOrders).focus())
+            .catch(() => self.clients.openWindow(target));
         }
         return self.clients.openWindow(target);
       }),
