@@ -28,6 +28,15 @@ type AddressPickerProps = {
    *  Off by default; screens that already render their own
    *  current-location button (the header sheet) leave it off. */
   showCurrentLocation?: boolean;
+  /** Pre-fill the input with unresolved text after it has already
+   *  mounted, e.g. a query handed off from the marketing site that
+   *  couldn't be resolved to a single address. Unlike initialValue,
+   *  this can arrive after mount and doesn't suppress the
+   *  hydrate-from-store behaviour. */
+  initialQuery?: string;
+  /** Focus the input once initialQuery lands, so Places suggestions
+   *  are one keystroke away. */
+  autoFocus?: boolean;
 };
 
 /**
@@ -51,6 +60,8 @@ export function AddressPicker({
   persistToStore = true,
   initialValue,
   showCurrentLocation = false,
+  initialQuery,
+  autoFocus = false,
 }: AddressPickerProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const hasKey = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
@@ -71,16 +82,41 @@ export function AddressPicker({
     if (persistToStore) hydrate();
   }, [hydrate, persistToStore]);
 
-  // Pre-fill with the previously chosen address — only on the
-  // welcome flow. The address-book form passes initialValue and
-  // doesn't want the global pick overriding it.
+  // Pre-fill with the currently chosen address, only on the welcome
+  // flow. The address-book form passes initialValue and doesn't want
+  // the global pick overriding it. Re-syncs whenever the store
+  // changes from outside this input (e.g. a location handed off from
+  // the marketing site), as long as the user isn't mid-search.
   useEffect(() => {
     if (initialValue !== undefined) return;
     if (!persistToStore) return;
-    if (stored && !value) setValue(stored.formattedAddress);
-    // We only want to seed once on first hydrate.
+    if (typed) return;
+    if (stored) setValue(stored.formattedAddress);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stored?.formattedAddress, persistToStore, initialValue]);
+
+  // Location handoff: initialQuery can arrive after this component has
+  // already mounted (once the handoff finishes resolving). Adjusted
+  // during render rather than in an effect, mirroring React's
+  // "adjust state when a prop changes" pattern, so it doesn't cost an
+  // extra render round-trip.
+  const [seededQuery, setSeededQuery] = useState(initialQuery);
+  if (initialQuery !== seededQuery) {
+    setSeededQuery(initialQuery);
+    if (initialQuery !== undefined) {
+      setValue(initialQuery);
+      setTyped(false);
+    }
+  }
+
+  // Focusing the input is a real DOM side effect, so it stays in an
+  // effect, separate from the state adjustment above.
+  useEffect(() => {
+    if (initialQuery === undefined || !autoFocus) return;
+    // Wait a tick so a fallback-to-loaded input swap has landed.
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [initialQuery, autoFocus]);
 
   function handlePlaceChanged() {
     const ac = autocompleteRef.current;
@@ -111,6 +147,7 @@ export function AddressPicker({
   if (!hasKey) {
     return (
       <FallbackInput
+        ref={inputRef}
         variant={variant}
         className={className}
         value={value}
@@ -123,11 +160,12 @@ export function AddressPicker({
   if (loadError) {
     return (
       <FallbackInput
+        ref={inputRef}
         variant={variant}
         className={className}
         value={value}
         onChange={setValue}
-        note="Couldn't load Google Maps — type your address and we'll resolve it later."
+        note="Couldn't load Google Maps. Type your address and we'll resolve it later."
       />
     );
   }
@@ -300,16 +338,22 @@ function PickerInput({
 }
 
 function FallbackInput({
+  ref,
   variant,
   className,
   value,
   onChange,
   disabled,
   note,
-}: InputCommonProps & { className?: string; note?: string }) {
+}: InputCommonProps & {
+  className?: string;
+  note?: string;
+  ref?: React.Ref<HTMLInputElement>;
+}) {
   return (
     <div className={cn("w-full", className)}>
       <PickerInput
+        ref={ref}
         variant={variant}
         value={value}
         onChange={onChange}
