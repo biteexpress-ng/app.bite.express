@@ -5,11 +5,15 @@ import { fetchPushConfig, subscribePush, unsubscribePush } from "@/lib/api/push"
 import {
   isIosDevice,
   resolvePushState,
+  sameServerKey,
   urlBase64ToUint8Array,
   type PushState,
 } from "@/lib/push-state";
 
 const SW_URL = "/sw.js";
+
+/** Thrown by `enable` with text that is safe to show the customer as is. */
+export class PushError extends Error {}
 
 function hasPushApis(): boolean {
   return (
@@ -34,14 +38,65 @@ async function currentSubscription(): Promise<PushSubscription | null> {
   return reg ? reg.pushManager.getSubscription() : null;
 }
 
+/** This browser's subscription for `publicKey`, replacing one made with an older key. */
+async function subscriptionFor(
+  reg: ServiceWorkerRegistration,
+  publicKey: string,
+): Promise<PushSubscription> {
+  const existing = await reg.pushManager.getSubscription();
+  if (existing && sameServerKey(existing.options.applicationServerKey, publicKey)) return existing;
+  if (existing) await existing.unsubscribe().catch(() => undefined);
+  return reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
+  });
+}
+
+/** Stores the subscription against the signed-in customer (an idempotent upsert). */
+async function saveSubscription(sub: PushSubscription): Promise<boolean> {
+  const json = sub.toJSON();
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
+  return subscribePush({
+    endpoint: json.endpoint,
+    keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+  });
+}
+
+/**
+ * Brings an existing subscription up to date: onto the current key after a
+ * rotation, and back onto this customer's account if the server row drifted
+ * (a failed sign-out call, another account on the same browser). Permission
+ * is already granted, so no tap is needed. Best effort: on failure the state
+ * falls back to whatever the browser has.
+ */
+async function resyncSubscription(publicKey: string): Promise<void> {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration(SW_URL);
+    const existing = reg ? await reg.pushManager.getSubscription() : null;
+    if (!reg || !existing) return;
+    const sub = await subscriptionFor(reg, publicKey);
+    const saved = await saveSubscription(sub);
+    // A fresh subscription the server doesn't know about would read as "on"
+    // while nothing can reach it. Drop it so the customer can turn alerts on.
+    if (!saved && sub !== existing) await sub.unsubscribe().catch(() => undefined);
+  } catch {
+    // Refresh must never fail because of the re-sync.
+  }
+}
+
 async function readState(): Promise<{ state: PushState; publicKey: string | null }> {
   const config = await fetchPushConfig();
+  const serverEnabled = config.enabled && config.public_key !== null;
+  const permission = "Notification" in window ? Notification.permission : "unsupported";
+  if (serverEnabled && hasPushApis() && permission === "granted") {
+    await resyncSubscription(config.public_key as string);
+  }
   const state = resolvePushState({
-    serverEnabled: config.enabled && config.public_key !== null,
+    serverEnabled,
     isIos: isIosDevice(navigator.userAgent, navigator.maxTouchPoints ?? 0),
     isStandalone: isStandalone(),
     hasPushApis: hasPushApis(),
-    permission: "Notification" in window ? Notification.permission : "unsupported",
+    permission,
     hasSubscription: (await currentSubscription()) !== null,
   });
   return { state, publicKey: config.public_key };
@@ -51,7 +106,7 @@ type PushStore = {
   state: PushState | "loading";
   publicKey: string | null;
   refresh: () => Promise<void>;
-  /** Call only from a tap. Throws an Error with customer-facing text. */
+  /** Call only from a tap. Throws a PushError with customer-facing text. */
   enable: () => Promise<void>;
   disable: () => Promise<void>;
 };
@@ -86,25 +141,12 @@ export const usePush = create<PushStore>((set, get) => ({
 
     const reg = await navigator.serviceWorker.register(SW_URL);
     await navigator.serviceWorker.ready;
-    const sub =
-      (await reg.pushManager.getSubscription()) ??
-      (await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
-      }));
+    const sub = await subscriptionFor(reg, publicKey);
 
-    const json = sub.toJSON();
-    const saved =
-      Boolean(json.endpoint && json.keys?.p256dh && json.keys?.auth) &&
-      (await subscribePush({
-        endpoint: json.endpoint as string,
-        keys: { p256dh: json.keys?.p256dh as string, auth: json.keys?.auth as string },
-      }));
-
-    if (!saved) {
+    if (!(await saveSubscription(sub))) {
       await sub.unsubscribe().catch(() => undefined);
       set({ state: "off" });
-      throw new Error("Couldn't turn on order alerts. Please try again.");
+      throw new PushError("Couldn't turn on order alerts. Please try again.");
     }
     set({ state: "on" });
   },
@@ -113,7 +155,7 @@ export const usePush = create<PushStore>((set, get) => ({
     const sub = await currentSubscription();
     if (sub) {
       await unsubscribePush(sub.endpoint);
-      await sub.unsubscribe();
+      await sub.unsubscribe().catch(() => undefined);
     }
     set({ state: "off" });
   },
@@ -123,15 +165,16 @@ export const usePush = create<PushStore>((set, get) => ({
  * Drops this browser's subscription on sign-out so the next person to use the
  * browser gets no alerts meant for the last one. The local unsubscribe is what
  * matters; the server call is best effort and is skipped when the token is
- * already dead (auth-expired), since it would only 401.
+ * already dead (auth-expired), since it would only 401. The server call starts
+ * first so it is already in flight if sign-out navigates away.
  */
 export async function dropPushOnSignOut(token: string | null): Promise<void> {
   try {
     const sub = await currentSubscription();
     if (sub) {
-      const endpoint = sub.endpoint;
+      const serverDrop = token ? unsubscribePush(sub.endpoint, token) : Promise.resolve(false);
       await sub.unsubscribe();
-      if (token) await unsubscribePush(endpoint, token);
+      await serverDrop;
     }
   } catch {
     // Sign-out must never fail because of push.

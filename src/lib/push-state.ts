@@ -54,6 +54,23 @@ export function shouldShowOptInCard(
   return dismissedUntil === null || now >= dismissedUntil;
 }
 
+/**
+ * Whether a subscription was made with the server's current VAPID key. After
+ * a key rotation the old subscription can never be delivered to, so it has to
+ * be replaced. A subscription that doesn't report its key can't be trusted.
+ */
+export function sameServerKey(subscriptionKey: ArrayBuffer | null, publicKey: string): boolean {
+  if (!subscriptionKey) return false;
+  let expected: Uint8Array;
+  try {
+    expected = urlBase64ToUint8Array(publicKey);
+  } catch {
+    return false;
+  }
+  const actual = new Uint8Array(subscriptionKey);
+  return actual.length === expected.length && actual.every((byte, i) => byte === expected[i]);
+}
+
 /** VAPID public key (base64url) to the bytes PushManager.subscribe wants. */
 export function urlBase64ToUint8Array(base64url: string): Uint8Array {
   const padding = "=".repeat((4 - (base64url.length % 4)) % 4);

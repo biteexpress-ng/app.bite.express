@@ -3,6 +3,7 @@ import {
   OPT_IN_DISMISS_MS,
   isIosDevice,
   resolvePushState,
+  sameServerKey,
   shouldShowOptInCard,
   urlBase64ToUint8Array,
   type PushEnvironment,
@@ -76,6 +77,24 @@ describe("shouldShowOptInCard", () => {
     expect(shouldShowOptInCard("off", true, now + 1, now)).toBe(false);
     expect(shouldShowOptInCard("off", true, now - 1, now)).toBe(true);
     expect(OPT_IN_DISMISS_MS).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+});
+
+describe("sameServerKey", () => {
+  const bytes = (values: number[]) => new Uint8Array(values).buffer;
+
+  it("matches the key the subscription was made with", () => {
+    expect(sameServerKey(bytes([1, 2, 3, 255, 239]), "AQID_-8")).toBe(true);
+  });
+
+  it("spots a rotated key", () => {
+    expect(sameServerKey(bytes([1, 2, 3, 255, 238]), "AQID_-8")).toBe(false);
+    expect(sameServerKey(bytes([1, 2, 3, 255]), "AQID_-8")).toBe(false);
+  });
+
+  it("does not trust a subscription with no key or a key it cannot read", () => {
+    expect(sameServerKey(null, "AQID_-8")).toBe(false);
+    expect(sameServerKey(bytes([1, 2, 3]), "not base64!")).toBe(false);
   });
 });
 
