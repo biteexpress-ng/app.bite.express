@@ -12,15 +12,17 @@ A signed-in customer on app.bite.express can send a package across town the way 
 
 | Question | Decision |
 |---|---|
-| Scope | App parity, no extras: category, sender and receiver with zone-checked addresses, instructions, who pays, the same payment methods as food checkout, accurate fee preview, parcel-aware tracking. No scheduling. No cancel (the web has no cancel UI by design). |
-| Price accuracy | Fix both gaps: the backend preview includes surge for parcels, and the web uses road distance from the backend directions proxy, falling back to straight-line. |
+| Scope | App parity, no extras: category, sender and receiver with zone-checked addresses, instructions, the same payment methods as food checkout, accurate fee preview, parcel-aware tracking. No scheduling. No cancel (the web has no cancel UI by design). |
+| Who pays | Always the sender, before the order is attended to. Every parcel sends `charge_payer = "sender"`. |
+| Cash on delivery | None, anywhere. Owner ruling: every order is paid first (Pay Online, wallet or Pay Offline). "Receiver pays" existed only for cash, so it is out. |
+| Price accuracy | Fix both gaps: the backend preview includes the parcel fee and surge, and the web uses road distance from the backend directions proxy, falling back to straight-line. |
 | Layout | One `/send` page with three collapsible steps. |
 | Architecture | Approach A: a new flow that shares the post-order payment code with food checkout through an extracted helper. |
 | Launch switch | None. The entry only appears where a zone offers the parcel module, which admin already controls. |
 
 ### Out of scope
 
-Scheduled pickups; cancelling or returning a parcel from the web; guest parcel orders; parcel coupons (the web has no coupon entry); changes to the Flutter app.
+Scheduled pickups; cancelling or returning a parcel from the web; guest parcel orders; parcel coupons (the web has no coupon entry); cash on delivery and receiver pays; changes to the Flutter app.
 
 ## 2. Current state (verified 2026-09-29)
 
@@ -28,27 +30,28 @@ Scheduled pickups; cancelling or returning a parcel from the web; guest parcel o
 - `POST /api/v1/customer/order/place` (`PlaceNewOrder::new_place_order`) accepts `order_type=parcel`. Parcel requires `parcel_category_id`, `receiver_details` (a JSON string) and `charge_payer` (`sender` or `receiver`); `store_id` is not required. `distance`, `address`, `latitude`, `longitude` describe the pickup (sender) point. The sender contact is stored in `delivery_address`.
 - `receiver_details` keys (Flutter AddressModel): `address, latitude, longitude, zone_id, contact_person_name, contact_person_number, contact_person_email, road, house, floor, address_type, additional_address`.
 - Zone checks at placement (`getZoneAndStore`, PlaceNewOrder.php ~783-798): the pickup zone must be in the `zoneId` header, contain the pickup point, and have a `module_type='parcel'` module (error code `zone` / `out_of_coverage_area`); `receiver_details.zone_id` must contain the drop point (error code `receiverZone`).
-- Charge (`getDeliveryCharge`, ~1041-1075): `max(distance x per_km, minimum) + vehicle extra charge`, per-km and minimum from the category when its minimum is set, otherwise from business settings; then surge. Total adds a service charge on the charge, tax (tax payer `parcel`), tips, minus coupon. COD ceiling from the zone-module pivot.
-- `POST /api/v1/customer/order/get-Tax` (`getCalculatedTax`, ~1737) has a parcel branch, but it skips `getZoneAndStore`, so `$zone` is null (~1795, ~1854) and surge is not applied. **The preview understates the real charge whenever surge is active.**
+- Charge (`getDeliveryCharge`, ~1041-1075): `max(distance x per_km, minimum) + vehicle extra charge`, per-km and minimum from the category when its minimum is set, otherwise from business settings; then surge. Placement stores that fee as `delivery_charge` (~414). Total adds a service charge on the charge, tax (tax payer `parcel`), tips (only when `dm_tips_status = 1`), minus coupon.
+- `POST /api/v1/customer/order/get-Tax` (`getCalculatedTax`, ~1737) has a parcel branch with two gaps. It skips `getZoneAndStore`, so `$zone` is null and surge is not applied. It also passes `delivery_charge = null` to the pricing resolver (only `original_delivery_charge` is set), so **the preview `order_amount` leaves the parcel fee out entirely.** The Flutter parcel screen reads only `tax_amount` from this response, which is why nobody noticed. The preview adds `dm_tips` whatever `dm_tips_status` says.
 - `GET /api/v1/parcel-category` (needs a `moduleId` header): id, name, description, image_full_url, parcel_per_km_shipping_charge, parcel_minimum_shipping_charge.
 - `GET /api/v1/customer/order/parcel-instructions` (paginated `{total_size, limit, offset, data}`).
-- `GET /api/v1/config/direction-api` proxies the Google Routes API (duration, distanceMeters, encodedPolyline).
+- `GET /api/v1/config/direction-api` proxies the Google Routes API (duration, distanceMeters, encodedPolyline). It answers 200 even on failure (`{"error": ...}`, `[]` or `null`).
 - `GET /api/v1/customer/order/details` returns the whole order object for parcel orders, not line items.
 
 **Web app**
 - The module picker links every module, including parcel, to `/browse/{id}`; nothing special-cases parcel.
-- `checkout-flow.tsx` `handlePlace` (~327-529) re-checks the zone, then runs the price-check, wallet, offline, bank-transfer and Paystack paths inline after the order is created.
+- `checkout-flow.tsx` `handlePlace` (~327-569) re-checks the zone, then runs the price-check, offline, Paystack and wallet paths inline after the order is created. Cash on delivery and the dedicated-account bank transfer were removed from the web on 2026-09-15, so food checkout offers Pay Online, wallet and Pay Offline only.
 - `placeOrder` (`src/lib/api/orders.ts`) always sends `is_buy_now`, `cart`, `store_id`; `PlaceOrderInput.orderType` already allows `"parcel"` but has no parcel fields. `order-quote.ts` only allows delivery or take_away.
-- Reusable: `AddressPicker` (Places autocomplete, `onPick`, `persistToStore=false`), `address-picker-checkout.tsx` (saved or picked address), `checkZone` (`src/lib/api/zones.ts`, returns zones with `modules[].module_type` and the COD/digital/offline flags), `distanceKm`, `isRefusalBody` (203 COD-ceiling refusals).
-- Tracking a parcel order today: the header shows "Your order"; the map's destination is `delivery_address` (the pickup for parcel) and the pickup pin is `store` (null); the items card says "Item details not available."; the address card labels the sender address "Delivery"; the orders list shows "Unknown shop". Order types lack `order_type`, `receiver_details`, `parcel_category`, `charge_payer`.
+- Reusable: `AddressPicker` (Places autocomplete, `onPick`, `persistToStore=false`), `address-picker-checkout.tsx` (saved or picked address), `checkZone` (`src/lib/api/zones.ts`, returns zones with `modules[].module_type` and the digital/offline flags), `distanceKm`, `isRefusalBody` (203 refusals).
+- Tracking a parcel order today: the header shows "Your order"; the map's destination is `delivery_address` (the pickup for parcel) and the pickup pin is `store` (null); the items card says "Item details not available."; the address card labels the sender address "Delivery"; the orders list shows "Unknown shop". Order types lack `order_type`, `receiver_details`, `parcel_category`.
 
-## 3. Backend: surge in the parcel preview
+## 3. Backend: fee and surge in the parcel preview
 
-- In `getCalculatedTax`, resolve the pickup zone for parcel orders the same way placement does (pickup coordinates, `zoneId` header, zone must have a parcel module), so `getDeliveryCharge` receives the zone and applies surge. Service charge and tax then follow from the same numbers as placement.
+- In `getCalculatedTax`, resolve the pickup zone for parcel orders the same way placement does (pickup coordinates, `zoneId` header, zone must have a parcel module), so `getDeliveryCharge` receives the zone and applies surge.
+- Carry the parcel fee as the preview's `delivery_charge`, as placement does, so the preview total includes it. Service charge and tax then follow from the same numbers as placement.
 - If the pickup is not in a parcel zone, return the same error placement returns (code `zone` / `out_of_coverage_area`, same status) instead of quoting.
 - No other backend change.
-- Effect on the Flutter app: its parcel preview gains surge when surge is active. With no surge, nothing changes.
-- Tests (PHPUnit): preview with surge active includes it; preview with no surge is unchanged; pickup outside every parcel zone is refused; the preview total equals the total recorded when the same parcel order is placed.
+- Effect on the Flutter app: its parcel preview gains surge in the tax figure when surge is active, and the preview is refused where placement would be refused. It does not read `delivery_charge` or `order_amount` for parcels.
+- Tests (PHPUnit): preview with surge active includes it; preview with no surge carries the plain fee; pickup outside every parcel zone, or in a zone without the parcel module, is refused; the preview total equals the total recorded when the same parcel order is placed.
 
 ## 4. Web: the `/send` flow
 
@@ -59,49 +62,50 @@ Scheduled pickups; cancelling or returning a parcel from the web; guest parcel o
 **Step 2: pickup and drop-off.** Two panels, each: address, contact name, phone, optional house, floor, road.
 - Pickup defaults to the current delivery location, name and phone from the customer's profile; saved addresses are offered (reuse `address-picker-checkout`).
 - Drop-off uses the Places autocomplete; receiver email optional.
-- Each address is zone-checked when picked (`checkZone`). Pickup must be in a zone whose modules include parcel; drop-off must be in a served zone (its zone id becomes `receiver_details.zone_id`). Errors show inline beside the field.
+- Each address is zone-checked when picked (`checkZone`). Pickup must be in a zone whose modules include parcel; the pickup's own zone ids become the `zoneId` header. Drop-off must be in a served zone (its zone id becomes `receiver_details.zone_id`). Errors show inline beside the field.
 - Phone numbers are validated in the same format the rest of the web app accepts.
 
 **Step 3: review and pay.**
 - Instructions: select from `parcel-instructions` plus an optional note, sent together as the delivery instruction the way the app does.
-- Who pays: "Me" (`sender`) or "Receiver" (`receiver`). Receiver forces cash on delivery and hides the other methods.
-- Payment methods: the same set as food checkout, filtered by the pickup zone's COD/digital/offline flags; wallet shows its balance and the shortfall the way checkout does.
-- Rider tip: the same control as checkout, when tips are enabled.
-- Price: a breakdown from the `get-Tax` preview (delivery fee including surge, service charge, VAT, tip, total), refreshed whenever category, either address, payer or tip changes. Fee figures are read from the preview response; the web never recomputes fees.
+- Who pays: always the sender. There is no payer choice; the order sends `charge_payer = "sender"`.
+- Payment methods: the same set as food checkout (Pay Online, wallet, Pay Offline), with Pay Online hidden when config or the pickup zone switches digital payment off and Pay Offline hidden unless offline payment passes its three gates; wallet shows its balance and the shortfall the way checkout does. Pay Online needs an email on the profile, checked before the order is created.
+- Rider tip: the same control as checkout, shown only when `dm_tips_status = 1` (placement drops the tip otherwise, while the preview would still add it).
+- Price: a breakdown from the `get-Tax` preview (delivery fee including surge, service charge, VAT, tip, total), refreshed whenever category, either address or tip changes. Fee figures are read from the preview response; the web never recomputes fees. A preview with no fee and no free-delivery reason is treated as a failure.
 - Distance: road distance from `config/direction-api` between pickup and drop-off; if that call fails, straight-line `distanceKm`, silently.
 
 **Step behaviour.** Steps collapse when complete and reopen when tapped; a step unlocks only when the previous one is valid.
 
-**Placing.** A new `placeParcelOrder()` in `src/lib/api/orders.ts` sends `order_type=parcel`, the pickup as address/latitude/longitude/distance, the sender contact, `receiver_details` as a JSON string, `parcel_category_id`, `charge_payer`, payment method, `dm_tips`, and the `zoneId`/`moduleId` headers; no cart and no store id. A 203 COD-ceiling refusal is handled with the existing `isRefusalBody`. On success the shared payment helper (section 5) runs, then the customer lands on `/orders/{id}`.
+**Placing.** A new `placeParcelOrder()` in `src/lib/api/orders.ts` sends `order_type=parcel`, the pickup as address/latitude/longitude/distance, the sender contact, `receiver_details` as a JSON string, `parcel_category_id`, `charge_payer=sender`, payment method, `dm_tips`, and the `zoneId`/`moduleId` headers; no cart and no store id. The preview is sent the identical body. A 203 refusal is handled with the existing `isRefusalBody`. On success the shared payment helper (section 5) runs, then the customer lands on `/orders/{id}`.
 
 ## 5. Web: shared payment helper
 
-- Extract the post-creation payment handling from `checkout-flow.tsx` `handlePlace` into `src/lib/checkout/settle-order.ts`: `settleOrder({ orderId, amount, method, ... }, deps)` covering the Paystack popup and confirmation, wallet charge, redirects to the bank-transfer and offline pages, and cash on delivery. It returns the navigation target (or a failure the caller shows). API calls and the Paystack launcher are passed in as `deps` so it is unit-testable in node.
-- Food checkout calls `settleOrder` instead of its inline code. Nothing else in food checkout changes: zone re-check, price-check handling and the quote stay where they are.
-- Because food checkout has no component tests, the live pass must place one food order by cash and one by wallet through the extracted path.
+- Extract the post-creation payment handling from `checkout-flow.tsx` `handlePlace` into `src/lib/checkout/settle-order.ts`: `settleOrder({ orderId, amount, method, ... }, deps)` covering exactly what food checkout does today: the Paystack popup and confirmation, the wallet charge, and the redirect to the offline payment page. No cash on delivery branch and no bank-transfer branch. It returns the navigation target (or a failure the caller shows). API calls and the Paystack launcher are passed in as `deps` so it is unit-testable in node.
+- Food checkout calls `settleOrder` instead of its inline code. Nothing else in food checkout changes: zone re-check, price-check handling and the quote stay where they are. The only visible change is punctuation in the "Payment cancelled" toast (its em dash goes).
+- Because food checkout has no component tests, the live pass must place one food order by wallet and one by Pay Offline (or Paystack test mode) through the extracted path.
 
 ## 6. Web: parcel-aware tracking
 
-- Order types gain `order_type`, `receiver_details`, `parcel_category`, `charge_payer`.
-- Order page: header reads "Parcel to {receiver name}"; two labelled address cards, Pickup (sender, from `delivery_address`) and Drop-off (receiver with phone); the rider map's destination is the drop-off and its second pin is the pickup; the "X km away" line measures to the drop-off; a parcel card replaces the items card (category, instructions, who pays); timeline "Confirmed by shop" reads "Confirmed" and "Being prepared" is hidden for parcels.
-- Orders list: package icon and "Parcel to {receiver name}" instead of "Unknown shop".
+- Order types gain `order_type`, `receiver_details`, `parcel_category`, `delivery_instruction`.
+- Order page: header reads "Parcel to {receiver name}"; two labelled address cards, Pickup (sender, from `delivery_address`) and Drop-off (receiver with phone); the rider map's destination is the drop-off and its second pin is the pickup; the "X km away" line measures to the drop-off; a parcel card replaces the items card (category, instructions); timeline "Confirmed by shop" reads "Confirmed" and "Being prepared" is hidden for parcels.
+- Orders list: package icon and "Parcel to {receiver name}" instead of "Unknown shop", with no item count.
 - Push notifications already cover parcel orders (same status sender); no change.
 
 ## 7. Error handling
 
-- Zone failures at either address are caught at pick time, not at "Place order"; placement errors (`zone`, `receiverZone`, COD ceiling) are still mapped to readable messages in case the zone changes between steps.
-- A preview failure disables "Place order" and shows a retry, so the customer never pays an unquoted price.
+- Zone failures at either address are caught at pick time, not at "Place order"; placement errors (`zone`, `receiverZone`) are still mapped to readable messages in case the zone changes between steps. A 203 `order_amount` refusal means the wallet cannot cover the total.
+- A preview failure disables "Place order" and shows a retry, so the customer never pays an unquoted price. So does a preview that is stale for the current inputs.
+- Pay Online without an email on the profile is blocked before the order is created.
 - Directions failure falls back to straight-line distance silently.
 - No native alert/confirm; errors use the existing toast and inline patterns. Copy has no em or en dashes.
 
 ## 8. Testing
 
 - Backend PHPUnit: section 3's cases.
-- Web vitest (pure modules): step validation (missing fields, phone format); payer rules (receiver means COD only; zone flags remove methods); the `receiver_details` payload keys; distance fallback; `settleOrder` for all five payment outcomes with fake deps; parcel tracking helpers (Pickup/Drop-off labels, map points, "Parcel to" title, orders-list label).
+- Web vitest (pure modules): step validation (missing fields, phone format); payment rules (zone and config flags remove Pay Online or Pay Offline; the place blocker for a stale or failed preview, a short wallet and a missing email); the `receiver_details` payload keys and `charge_payer=sender`; distance fallback; the preview-without-fee guard; `settleOrder` for Paystack (success, cancel, error, confirm retry, confirm failure, no email), wallet (paid, short, error) and the offline redirect, with fake deps; parcel tracking helpers (Pickup/Drop-off labels, map points, "Parcel to" title, orders-list label).
 - Typecheck, lint (new errors only), build.
-- Live pass in Edge: send a parcel with the receiver paying cash and one with the sender paying from wallet; confirm the preview total equals the placed order's total and tracking shows pickup and drop-off correctly; place one food order by cash and one by wallet through the extracted payment path.
+- Live pass in Edge: send two parcels paid by the sender (one by wallet, one by Pay Offline or Paystack test mode, whichever the local setup supports); confirm the preview total equals the placed order's total and tracking shows pickup and drop-off correctly; place one food order by wallet and one by Pay Offline (or Paystack test mode) through the extracted payment path. Cash on delivery is never switched on.
 
 ## 9. Rollout
 
-1. Backend first (the only customer-visible change is that the app's parcel preview includes surge when active).
+1. Backend first (the only customer-visible change is that the app's parcel preview includes surge when active and is refused outside parcel zones).
 2. Web app second. The `/send` entry appears only where a zone offers the parcel module.

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A signed-in customer on app.bite.express sends a package from a `/send` page with app parity (category, zone-checked pickup and drop-off, instructions, who pays, food checkout's payment methods), sees the backend's exact price including surge before paying, and tracks the parcel with pickup and drop-off shown correctly.
+**Goal:** A signed-in customer on app.bite.express sends a package from a `/send` page with app parity (category, zone-checked pickup and drop-off, instructions, food checkout's payment methods, sender always pays), sees the backend's exact price including surge before paying, and tracks the parcel with pickup and drop-off shown correctly.
 
 **Architecture:** The backend's `get-Tax` preview resolves the parcel pickup zone the way placement does (a new `parcelPickupZone()` shared by both), so surge is applied and the fee is carried as the delivery charge, making the preview total equal the placed total. The web adds pure rule modules (`src/lib/parcel/*`), a `parcelOrderBody()` that the preview and the order POST both send, and a `settleOrder()` helper extracted from food checkout that both checkouts call after the order is created. `/send` is a three-step client page; tracking and the orders list read parcel fields through pure helpers.
 
@@ -12,9 +12,10 @@
 
 **Spec resolutions (read before Task 1):**
 - Section 3 says "no other backend change", but its own test "the preview total equals the placed total" cannot pass with surge alone: for parcels `getCalculatedTax` passes `delivery_charge = null` into the pricing resolver (only `original_delivery_charge` is set), so today's preview `order_amount` leaves the fee out entirely. Placement sets `delivery_charge` from the rounded original (PlaceNewOrder.php:414). Task 1 mirrors that one line in the preview. The Flutter parcel screen reads only `tax_amount` from this response, so the app sees only the surge change the spec already accepts.
-- Sections 4 and 5 assume food checkout has cash on delivery and a bank-transfer redirect. It has neither: both were removed from the web on 2026-09-15 (payment-picker.tsx:71-72) and `handlePlace` today runs offline, Paystack and wallet only. `settleOrder` therefore covers Paystack, wallet, the offline redirect and cash on delivery (used only by parcel receiver-pays). Sender pays offers the food set (Pay Online, wallet, Pay Offline). The live pass places the food orders by wallet and by Pay Offline, since cash is not offered on web food checkout.
-- Receiver pays is offered only when cash on delivery is on both in config and in the pickup zone, the same two switches the Flutter app checks (parcel_request_screen.dart:106-108). Every parcel zone in the local DB has `cash_on_delivery = 0`; Task 13 switches one on for the run and restores it.
+- Cash on delivery is permanently forbidden (owner ruling): every order is paid before it is attended to. So there is no payer choice, no receiver pays, no COD method and no COD config read for parcels; every parcel sends `charge_payer = "sender"`.
+- Food checkout has no cash on delivery and no bank-transfer redirect: both were removed from the web on 2026-09-15 (payment-picker.tsx:71-72), and `handlePlace` today runs offline, Paystack and wallet only. `settleOrder` covers exactly those three. Parcels offer the same set (Pay Online, wallet, Pay Offline), filtered by the digital and offline switches.
 - The tip control shows only when `dm_tips_status = 1`: placement drops the tip when it is 0 but the preview still adds it, so showing it would break preview parity.
+- Pay Online without an email on the profile is blocked before `/order/place` (food checkout checks only after creating the order, which leaves a failed order behind; food keeps its behaviour, `/send` does not repeat it).
 - The web refuses a parcel preview that carries no fee and no free-delivery reason (Task 3). That is exactly what a backend without Task 1 returns, so a web deploy ahead of the backend can never show a total below what is charged.
 - The Paystack "Payment cancelled" toast loses its em dash when it moves into `settleOrder` (copy rule). That is the only text food checkout customers can see change.
 
@@ -29,6 +30,7 @@
 - Backend tests: one PHPUnit process at a time (all worktrees share the `biteexpress_testing` database). Set `$env:OPENSSL_CONF='C:\laragon\bin\php\php-8.3.28-Win32-vs16-x64\extras\ssl\openssl.cnf'` in the same command as every PHPUnit run, or tests using `FakesFcmTransport` silently skip. Directory-sized runs use `php vendor/bin/phpunit -d memory_limit=1024M <path>`. After every run, `git status --short`; if `resources/lang/en/messages.php` is listed, `git checkout -- resources/lang/en/messages.php`. No migrations in this plan.
 - Web commands (from the worktree root): `npx vitest run <file>`, `npm test`, `npx tsc --noEmit`, `npx eslint <files>`, `npm run build`. The worktree has no `node_modules`; Task 2 runs `npm install` once, as the normal user, into the worktree only.
 - Lint: only NEW errors count. Existing files already carry `react-hooks/set-state-in-effect` and `react/no-unescaped-entities` errors; each task that edits an existing file records its baseline first. New files must lint clean: never call a state setter synchronously in an effect body (set state only inside `.then` callbacks and derive "loading" from a key mismatch), and escape apostrophes in JSX text with `&apos;`.
+- No cash on delivery anywhere, ever: no COD method, branch, test or config read, and never switch COD on in any zone or setting, including locally. Every parcel sends `charge_payer = "sender"`.
 - No native `alert()`/`confirm()`; errors use `toast` (`src/lib/toast.ts`) or inline text.
 - Fee figures are read from the `get-Tax` preview and never recomputed on the web. The preview and the order POST send the identical body from `parcelOrderBody()`, with the identical `distance` number.
 - Money renders as `₦{Math.round(x).toLocaleString()}` like checkout. Brand red is `#de1600` via the existing `brand-red` classes; match checkout's card, radio and `btn-flame` styling.
@@ -38,10 +40,10 @@
 ## Review Focus
 
 - The directions proxy answers HTTP 200 even when Google fails (`{"error": "..."}`, `[]` or `null`): distance must fall back to straight line, never to NaN or 0 (which would price every parcel at the minimum). Pinned by the `roadDistanceKm` shape tests (Task 2).
-- A pickup zone with cash on delivery off (every parcel zone in the local DB today) or config COD off: "Receiver" must not be offered, and a receiver choice made before the pickup changed must fall back to the sender, or placement 403s after the customer filled every step. Pinned by `allowedPayers` and `effectivePayer` tests (Task 5).
+- The customer picks a saved pickup address in another zone than the home-page location: the `zoneId` header must carry the pickup's own zones, or placement answers `zone` after every step was filled. Pinned by the `pickupZoneResult` "uses the pickup's own zone ids" test (Task 4).
 - The backend preview not yet deployed (or rolled back) returns `delivery_charge: 0` with no free-delivery reason: the web must refuse to quote rather than show "Free" delivery and a total below the charge. Pinned by the `parcelQuoteUsable` tests (Task 3).
-- A 203 `order_amount` refusal means "wallet short" when paying by wallet and "over the COD ceiling" when the receiver pays cash: the message must match the method. Pinned by the `parcelPlaceErrorMessage` tests (Task 5).
-- The customer changes the tip, payer or drop-off while a preview is in flight or after one failed: "Place order" must stay disabled until a preview for the current inputs lands, so nobody pays a total they were not shown. Pinned by the `parcelQuoteKey` and `placeBlocker` tests (Task 5).
+- A customer with no email on the profile chooses Pay Online: "Place order" must stay disabled with a reason, not create an order that then cannot be charged and is left failed. Pinned by the `placeBlocker` missing-email test (Task 5).
+- The customer changes the tip, category or drop-off while a preview is in flight or after one failed: "Place order" must stay disabled until a preview for the current inputs lands, so nobody pays a total they were not shown. Pinned by the `parcelQuoteKey` and `placeBlocker` tests (Task 5).
 
 ---
 
@@ -58,14 +60,14 @@
 
 | File | Action | Responsibility |
 |---|---|---|
-| `src/lib/api/config.ts` (+ `config.test.ts`) | Modify / Create test | COD, digital and tip switches |
+| `src/lib/api/config.ts` (+ `config.test.ts`) | Modify / Create test | Digital payment and tip switches |
 | `src/lib/api/parcel.ts` | Create | Parcel categories and rider instructions |
 | `src/lib/api/directions.ts` (+ test) | Create | Road distance from the proxy, straight-line fallback |
 | `src/lib/api/orders.ts` | Modify | Parcel order types, `parcelOrderBody()`, `placeParcelOrder()`, parcel fields on `OrderSummary` |
 | `src/lib/api/orders-parcel.test.ts` | Create | Parcel body and `receiver_details` keys |
 | `src/lib/api/order-quote.ts` (+ test) | Modify | `fetchParcelQuote()`, `parcelQuoteUsable()` |
 | `src/lib/parcel/parcel-form.ts` (+ test) | Create | Contact validation, zone results, receiver details, instruction text, step unlocking |
-| `src/lib/parcel/parcel-payment.ts` (+ test) | Create | Payers, methods, quote key, place blocker, placement error copy |
+| `src/lib/parcel/parcel-payment.ts` (+ test) | Create | Methods, quote key, place blocker, placement error copy |
 | `src/lib/checkout/settle-order.ts` (+ test) | Create | Post-creation payment handling shared by both checkouts |
 | `src/components/checkout/checkout-flow.tsx` | Modify | Calls `settleOrder` |
 | `src/components/checkout/address-picker-checkout.tsx` | Modify | Exports `toCheckoutFromPicked` |
@@ -73,7 +75,6 @@
 | `src/components/parcel/category-step.tsx` | Create | Category cards |
 | `src/components/parcel/contact-fields.tsx` | Create | Name, phone, optional email, house, floor, road |
 | `src/components/parcel/instruction-picker.tsx` | Create | Preset instructions plus note |
-| `src/components/parcel/payer-picker.tsx` | Create | Me or Receiver |
 | `src/components/parcel/tip-picker.tsx` | Create | Same tip control as checkout |
 | `src/components/parcel/parcel-price-card.tsx` | Create | Preview breakdown with retry |
 | `src/components/parcel/send-parcel-flow.tsx` | Create | The `/send` state and steps |
@@ -175,7 +176,7 @@ class ParcelPreviewSurgeTest extends TestCase
         // for the life of the PHP process, so settings read through it are
         // pinned with the `<key>_conf` override instead of the table.
         config([
-            'cash_on_delivery_conf' => ['key' => 'cash_on_delivery', 'value' => json_encode(['status' => 1])],
+            'digital_payment_conf' => ['key' => 'digital_payment', 'value' => json_encode(['status' => 1])],
             'additional_charge_status_conf' => ['key' => 'additional_charge_status', 'value' => '1'],
             'additional_charge_conf' => ['key' => 'additional_charge', 'value' => '100'],
             'additional_charge_type_conf' => ['key' => 'additional_charge_type', 'value' => 'fixed'],
@@ -290,9 +291,11 @@ class ParcelPreviewSurgeTest extends TestCase
     {
         return array_merge([
             'order_type' => 'parcel',
-            'payment_method' => 'cash_on_delivery',
+            // Pay Online: placement parks the order at 'failed' until the
+            // Paystack confirm, with no wallet side effects to set up.
+            'payment_method' => 'digital_payment',
             'parcel_category_id' => $categoryId,
-            'charge_payer' => 'receiver',
+            'charge_payer' => 'sender',
             'distance' => 8,
             'address' => '12 Allen Avenue, Ikeja',
             'address_type' => 'Delivery',
@@ -399,7 +402,8 @@ class ParcelPreviewSurgeTest extends TestCase
 
         $order = Order::query()->findOrFail($placed->json('order_id'));
         $this->assertSame('parcel', $order->order_type);
-        $this->assertSame('receiver', $order->charge_payer);
+        $this->assertSame('sender', $order->charge_payer);
+        $this->assertSame('digital_payment', $order->payment_method);
         $this->assertEqualsWithDelta((float) $preview->json('order_amount'), (float) $order->order_amount, 0.001);
         $this->assertEqualsWithDelta((float) $preview->json('order_amount'), (float) $placed->json('total_ammount'), 0.001);
         $this->assertEqualsWithDelta((float) $preview->json('delivery_charge'), (float) $order->delivery_charge, 0.001);
@@ -550,7 +554,7 @@ cd C:\laragon\www\dashboard.bite.express; git add app/Traits/PlaceNewOrder.php t
 
 **Interfaces:**
 - Produces:
-  - `AppConfig = { offline_payment_status: number; cash_on_delivery: boolean; digital_payment: boolean; dm_tips_status: number }`; `toAppConfig(data): AppConfig`. `fetchConfig()` keeps its signature.
+  - `AppConfig = { offline_payment_status: number; digital_payment: boolean; dm_tips_status: number }`; `toAppConfig(data): AppConfig`. `fetchConfig()` keeps its signature.
   - `ParcelCategory = { id: number; name: string; description?: string | null; image_full_url?: string | null; parcel_per_km_shipping_charge?: number | null; parcel_minimum_shipping_charge?: number | null }`; `fetchParcelCategories(moduleId: number): Promise<{ ok: true; categories: ParcelCategory[] } | { ok: false; message: string }>`.
   - `ParcelInstruction = { id: number; instruction: string }`; `fetchParcelInstructions(): Promise<{ ok: true; instructions: ParcelInstruction[] } | { ok: false; message: string }>`.
   - `roadDistanceKm(body: unknown): number | null`; `parcelDistanceKm(roadKm: number | null, from: {lat,lng}, to: {lat,lng}): number` (kilometres rounded to the metre); `fetchRoadDistanceKm(from, to): Promise<number | null>`.
@@ -577,13 +581,11 @@ describe("toAppConfig", () => {
     expect(
       toAppConfig({
         offline_payment_status: 1,
-        cash_on_delivery: true,
         digital_payment: false,
         dm_tips_status: 1,
       }),
     ).toEqual({
       offline_payment_status: 1,
-      cash_on_delivery: true,
       digital_payment: false,
       dm_tips_status: 1,
     });
@@ -592,7 +594,6 @@ describe("toAppConfig", () => {
   it("treats missing switches as off", () => {
     expect(toAppConfig({})).toEqual({
       offline_payment_status: 0,
-      cash_on_delivery: false,
       digital_payment: false,
       dm_tips_status: 0,
     });
@@ -602,13 +603,11 @@ describe("toAppConfig", () => {
     expect(
       toAppConfig({
         offline_payment_status: "1",
-        cash_on_delivery: 1,
         digital_payment: "1",
         dm_tips_status: "1",
       }),
     ).toEqual({
       offline_payment_status: 1,
-      cash_on_delivery: true,
       digital_payment: true,
       dm_tips_status: 1,
     });
@@ -692,21 +691,19 @@ import { api } from "@/lib/api-client";
  * ConfigController.php:396 and is the ONLY offline-payment gate the
  * backend actually enforces (PlaceNewOrder.php:681-685).
  *
- * `cash_on_delivery` and `digital_payment` are the global payment
- * switches; placement refuses a method whose switch is off.
- * `dm_tips_status` is 0|1, and placement drops dm_tips when it is 0
- * even though the get-Tax preview would still add the tip.
+ * `digital_payment` is the global Pay Online switch; placement refuses
+ * digital_payment when it is off. `dm_tips_status` is 0|1, and
+ * placement drops dm_tips when it is 0 even though the get-Tax preview
+ * would still add the tip.
  */
 export type AppConfig = {
   offline_payment_status: number;
-  cash_on_delivery: boolean;
   digital_payment: boolean;
   dm_tips_status: number;
 };
 
 type ConfigResponse = {
   offline_payment_status?: number | string;
-  cash_on_delivery?: boolean | number | string;
   digital_payment?: boolean | number | string;
   dm_tips_status?: number | string;
 };
@@ -733,7 +730,6 @@ function isOn(v: unknown): boolean {
 export function toAppConfig(data: ConfigResponse): AppConfig {
   return {
     offline_payment_status: Number(data.offline_payment_status ?? 0),
-    cash_on_delivery: isOn(data.cash_on_delivery),
     digital_payment: isOn(data.digital_payment),
     dm_tips_status: Number(data.dm_tips_status ?? 0),
   };
@@ -914,10 +910,10 @@ cd C:\laragon\www\biteexpress-web-app-parcel; git add src/lib/api/config.ts src/
 **Interfaces:**
 - Produces (orders.ts):
   - `OrderReceiver = { address?: string; latitude?: string | number; longitude?: string | number; contact_person_name?: string; contact_person_number?: string; contact_person_email?: string | null }`
-  - `OrderSummary` gains `order_type?: string | null; receiver_details?: OrderReceiver | null; parcel_category?: { id?: number; name?: string | null; image_full_url?: string | null } | null; charge_payer?: "sender" | "receiver" | null; delivery_instruction?: string | null`
+  - `OrderSummary` gains `order_type?: string | null; receiver_details?: OrderReceiver | null; parcel_category?: { id?: number; name?: string | null; image_full_url?: string | null } | null; delivery_instruction?: string | null`
   - `ReceiverDetails = { address: string; latitude: string; longitude: string; zone_id: number; contact_person_name: string; contact_person_number: string; contact_person_email: string; road: string; house: string; floor: string; address_type: string; additional_address: string }`
-  - `PlaceParcelOrderInput = { moduleId: number; zoneIds: number[]; pickup: { text: string; lat: number; lng: number; addressType?: string }; sender: { name: string; phone: string; email: string | null; house: string; floor: string; road: string }; receiverDetails: ReceiverDetails; distance: number; parcelCategoryId: number; chargePayer: "sender" | "receiver"; paymentMethod: "cash_on_delivery" | "digital_payment" | "wallet" | "offline_payment"; dmTips: number; deliveryInstruction: string }`
-  - `parcelOrderBody(input: PlaceParcelOrderInput): Record<string, unknown>`
+  - `PlaceParcelOrderInput = { moduleId: number; zoneIds: number[]; pickup: { text: string; lat: number; lng: number; addressType?: string }; sender: { name: string; phone: string; email: string | null; house: string; floor: string; road: string }; receiverDetails: ReceiverDetails; distance: number; parcelCategoryId: number; paymentMethod: "digital_payment" | "wallet" | "offline_payment"; dmTips: number; deliveryInstruction: string }`
+  - `parcelOrderBody(input: PlaceParcelOrderInput): Record<string, unknown>` (always `charge_payer: "sender"`)
   - `PlaceParcelOrderResult = { ok: true; orderId: number; amount: number } | { ok: false; code: string | null; message: string }`; `placeParcelOrder(input): Promise<PlaceParcelOrderResult>`
 - Produces (order-quote.ts): `parcelQuoteUsable(q: OrderQuote): boolean`; `fetchParcelQuote(input: PlaceParcelOrderInput): Promise<OrderQuoteResult>`
 - Consumes: `api()`, existing `parseQuote`, `OrderQuote`, `OrderQuoteResult`, `PlaceOrderResponse` (module-private type in orders.ts).
@@ -958,8 +954,7 @@ const input: PlaceParcelOrderInput = {
   },
   distance: 18.45,
   parcelCategoryId: 8,
-  chargePayer: "receiver",
-  paymentMethod: "cash_on_delivery",
+  paymentMethod: "wallet",
   dmTips: 200,
   deliveryInstruction: "Fragile (Call on arrival)",
 };
@@ -1010,11 +1005,17 @@ describe("parcelOrderBody", () => {
     expect(parsed.zone_id).toBe(4);
   });
 
-  it("carries the category, payer, payment method, tip and instruction", () => {
+  it("always bills the sender, who pays before the order is attended to", () => {
+    expect(parcelOrderBody(input).charge_payer).toBe("sender");
+    for (const paymentMethod of ["digital_payment", "wallet", "offline_payment"] as const) {
+      expect(parcelOrderBody({ ...input, paymentMethod }).charge_payer).toBe("sender");
+    }
+  });
+
+  it("carries the category, payment method, tip and instruction", () => {
     expect(parcelOrderBody(input)).toMatchObject({
       parcel_category_id: 8,
-      charge_payer: "receiver",
-      payment_method: "cash_on_delivery",
+      payment_method: "wallet",
       dm_tips: 200,
       delivery_instruction: "Fragile (Call on arrival)",
     });
@@ -1107,8 +1108,6 @@ Replace with:
     name?: string | null;
     image_full_url?: string | null;
   } | null;
-  /** Parcel orders only: who pays the rider's fee. */
-  charge_payer?: "sender" | "receiver" | null;
   delivery_instruction?: string | null;
 };
 
@@ -1173,8 +1172,8 @@ export type PlaceParcelOrderInput = {
   /** Kilometres, pickup to drop-off. The preview must get the same number. */
   distance: number;
   parcelCategoryId: number;
-  chargePayer: "sender" | "receiver";
-  paymentMethod: "cash_on_delivery" | "digital_payment" | "wallet" | "offline_payment";
+  /** No cash on delivery: every order is paid before it is attended to. */
+  paymentMethod: "digital_payment" | "wallet" | "offline_payment";
   dmTips: number;
   deliveryInstruction: string;
 };
@@ -1183,7 +1182,8 @@ export type PlaceParcelOrderInput = {
  * The body for POST /order/place with order_type=parcel. The get-Tax
  * preview is sent this exact body too (fetchParcelQuote), so the two
  * cannot price different inputs. No cart, no store_id, no is_buy_now:
- * the parcel branch of PlaceNewOrder reads none of them.
+ * the parcel branch of PlaceNewOrder reads none of them. The sender
+ * always pays, up front.
  */
 export function parcelOrderBody(
   input: PlaceParcelOrderInput,
@@ -1192,7 +1192,7 @@ export function parcelOrderBody(
     order_type: "parcel",
     payment_method: input.paymentMethod,
     parcel_category_id: input.parcelCategoryId,
-    charge_payer: input.chargePayer,
+    charge_payer: "sender",
     receiver_details: JSON.stringify(input.receiverDetails),
     distance: input.distance,
     address: input.pickup.text,
@@ -1214,8 +1214,7 @@ export function parcelOrderBody(
 export type PlaceParcelOrderResult =
   | { ok: true; orderId: number; amount: number }
   /** `code` is the backend's error code: "zone", "receiverZone", or
-   *  "order_amount" on a 203 refusal (wallet short or over the cash
-   *  ceiling, depending on the payment method). */
+   *  "order_amount" on a 203 refusal (the wallet cannot cover the total). */
   | { ok: false; code: string | null; message: string };
 
 export async function placeParcelOrder(
@@ -1316,7 +1315,7 @@ export async function fetchParcelQuote(
 - [ ] **Step 6: Run them to verify they pass**
 
 Run: `npx vitest run src/lib/api/orders-parcel.test.ts src/lib/api/order-quote.test.ts src/lib/api/orders-wire.test.ts`
-Expected: PASS (5 + 9 + existing wire tests).
+Expected: PASS (6 + 9 + existing wire tests).
 
 - [ ] **Step 7: Typecheck and lint**
 
@@ -1375,7 +1374,7 @@ function zone(
   id: number,
   modules: Array<{ id: number; module_type: string }>,
 ): ZoneData {
-  return { id, status: 1, cash_on_delivery: 1, digital_payment: 1, offline_payment: 0, modules };
+  return { id, status: 1, cash_on_delivery: 0, digital_payment: 1, offline_payment: 0, modules };
 }
 
 describe("validateContact", () => {
@@ -1733,21 +1732,21 @@ cd C:\laragon\www\biteexpress-web-app-parcel; git add src/lib/parcel/parcel-form
 
 ---
 
-## Task 5: Web, parcel payer and payment rules
+## Task 5: Web, parcel payment rules
 
 **Files:**
 - Create: `src/lib/parcel/parcel-payment.ts`, `src/lib/parcel/parcel-payment.test.ts`
 
 **Interfaces:**
 - Produces:
-  - `ParcelPayer = "sender" | "receiver"`; `ParcelPaymentMethod = "digital_payment" | "wallet" | "offline_payment" | "cash_on_delivery"`
-  - `PaymentGates = { cashOnDelivery: boolean; digitalPayment: boolean; zone: Pick<ZoneData, "cash_on_delivery" | "digital_payment" | "offline_payment">; offlineUsable: boolean }`
-  - `allowedPayers(g): ParcelPayer[]`; `effectivePayer(choice, g): ParcelPayer`; `allowedMethods(payer, g): ParcelPaymentMethod[]`; `effectivePayment(payer, choice: ParcelPaymentMethod | null, g): ParcelPaymentMethod | null`
-  - `ParcelQuoteInputs = { categoryId: number; pickup: {lat,lng}; dropoff: {lat,lng}; distanceKm: number; payer: ParcelPayer; tip: number }`; `parcelQuoteKey(i): string`
+  - `ParcelPaymentMethod = "digital_payment" | "wallet" | "offline_payment"` (the same strings as `PaymentMethod` in `payment-picker.tsx`; there is no cash on delivery)
+  - `PaymentGates = { digitalPayment: boolean; zone: Pick<ZoneData, "digital_payment" | "offline_payment">; offlineUsable: boolean }`
+  - `allowedMethods(g: PaymentGates): ParcelPaymentMethod[]`; `effectivePayment(choice: ParcelPaymentMethod | null, g: PaymentGates): ParcelPaymentMethod | null`
+  - `ParcelQuoteInputs = { categoryId: number; pickup: {lat,lng}; dropoff: {lat,lng}; distanceKm: number; tip: number }`; `parcelQuoteKey(i): string`
   - `ParcelQuoteView = { kind: "idle" } | { kind: "loading" } | { kind: "ready"; quote: OrderQuote } | { kind: "error"; message: string }`
   - `walletShortfall(total: number, balance: number | null): number`
-  - `placeBlocker(a: { stepsValid: boolean; quote: ParcelQuoteView; payment: ParcelPaymentMethod | null; walletBalance: number | null }): string | null`
-  - `parcelPlaceErrorMessage(code: string | null, method: ParcelPaymentMethod, fallback: string): string`
+  - `placeBlocker(a: { stepsValid: boolean; quote: ParcelQuoteView; payment: ParcelPaymentMethod | null; walletBalance: number | null; email: string | null }): string | null`
+  - `parcelPlaceErrorMessage(code: string | null, fallback: string): string`
 - Consumes: `OrderQuote` (order-quote.ts), `ZoneData` (zones.ts).
 
 - [ ] **Step 1: Write the failing test**
@@ -1759,8 +1758,6 @@ import { describe, expect, it } from "vitest";
 import type { OrderQuote } from "@/lib/api/order-quote";
 import {
   allowedMethods,
-  allowedPayers,
-  effectivePayer,
   effectivePayment,
   parcelPlaceErrorMessage,
   parcelQuoteKey,
@@ -1774,11 +1771,10 @@ function gates(
   zone: Partial<PaymentGates["zone"]> = {},
 ): PaymentGates {
   return {
-    cashOnDelivery: true,
     digitalPayment: true,
     offlineUsable: true,
     ...over,
-    zone: { cash_on_delivery: 1, digital_payment: 1, offline_payment: 1, ...zone },
+    zone: { digital_payment: 1, offline_payment: 1, ...zone },
   };
 }
 
@@ -1796,48 +1792,29 @@ const quote: OrderQuote = {
   total: 900,
 };
 
-describe("allowedPayers and effectivePayer", () => {
-  it("offers the receiver when cash is on globally and in the pickup zone", () => {
-    expect(allowedPayers(gates())).toEqual(["sender", "receiver"]);
-  });
-
-  it("hides the receiver when the pickup zone has cash on delivery off", () => {
-    expect(allowedPayers(gates({}, { cash_on_delivery: 0 }))).toEqual(["sender"]);
-  });
-
-  it("hides the receiver when cash on delivery is off in config", () => {
-    expect(allowedPayers(gates({ cashOnDelivery: false }))).toEqual(["sender"]);
-  });
-
-  it("falls back to the sender when a receiver choice is no longer allowed", () => {
-    expect(effectivePayer("receiver", gates())).toBe("receiver");
-    expect(effectivePayer("receiver", gates({}, { cash_on_delivery: 0 }))).toBe("sender");
-  });
-});
-
 describe("allowedMethods and effectivePayment", () => {
-  it("gives the receiver cash on delivery only", () => {
-    expect(allowedMethods("receiver", gates())).toEqual(["cash_on_delivery"]);
-  });
-
-  it("gives the sender food checkout's methods, never cash", () => {
-    expect(allowedMethods("sender", gates())).toEqual(["digital_payment", "wallet", "offline_payment"]);
+  it("offers food checkout's methods: Pay Online, wallet, Pay Offline", () => {
+    expect(allowedMethods(gates())).toEqual(["digital_payment", "wallet", "offline_payment"]);
   });
 
   it("drops Pay Online when the zone or config switches it off", () => {
-    expect(allowedMethods("sender", gates({}, { digital_payment: 0 }))).toEqual(["wallet", "offline_payment"]);
-    expect(allowedMethods("sender", gates({ digitalPayment: false }))).toEqual(["wallet", "offline_payment"]);
+    expect(allowedMethods(gates({}, { digital_payment: 0 }))).toEqual(["wallet", "offline_payment"]);
+    expect(allowedMethods(gates({ digitalPayment: false }))).toEqual(["wallet", "offline_payment"]);
   });
 
   it("drops Pay Offline when it is not usable in the zone", () => {
-    expect(allowedMethods("sender", gates({ offlineUsable: false }))).toEqual(["digital_payment", "wallet"]);
+    expect(allowedMethods(gates({ offlineUsable: false }))).toEqual(["digital_payment", "wallet"]);
   });
 
-  it("keeps a valid choice and replaces one that is not allowed", () => {
-    expect(effectivePayment("sender", "wallet", gates())).toBe("wallet");
-    expect(effectivePayment("sender", "offline_payment", gates({ offlineUsable: false }))).toBe("digital_payment");
-    expect(effectivePayment("sender", null, gates())).toBe("digital_payment");
-    expect(effectivePayment("receiver", "wallet", gates())).toBe("cash_on_delivery");
+  it("always keeps the wallet, so there is always a way to pay", () => {
+    expect(allowedMethods(gates({ digitalPayment: false, offlineUsable: false }))).toEqual(["wallet"]);
+  });
+
+  it("keeps a valid choice and replaces one that is no longer allowed", () => {
+    expect(effectivePayment("wallet", gates())).toBe("wallet");
+    expect(effectivePayment("offline_payment", gates({ offlineUsable: false }))).toBe("digital_payment");
+    expect(effectivePayment("digital_payment", gates({ digitalPayment: false }))).toBe("wallet");
+    expect(effectivePayment(null, gates())).toBe("digital_payment");
   });
 });
 
@@ -1847,7 +1824,6 @@ describe("parcelQuoteKey", () => {
     pickup: { lat: 6.6018, lng: 3.3515 },
     dropoff: { lat: 6.4541, lng: 3.4218 },
     distanceKm: 18.45,
-    payer: "sender" as const,
     tip: 0,
   };
 
@@ -1858,7 +1834,6 @@ describe("parcelQuoteKey", () => {
   it("changes with every input the price depends on", () => {
     const base = parcelQuoteKey(inputs);
     expect(parcelQuoteKey({ ...inputs, tip: 200 })).not.toBe(base);
-    expect(parcelQuoteKey({ ...inputs, payer: "receiver" })).not.toBe(base);
     expect(parcelQuoteKey({ ...inputs, categoryId: 9 })).not.toBe(base);
     expect(parcelQuoteKey({ ...inputs, distanceKm: 18.5 })).not.toBe(base);
     expect(parcelQuoteKey({ ...inputs, dropoff: { lat: 6.45, lng: 3.42 } })).not.toBe(base);
@@ -1868,47 +1843,52 @@ describe("parcelQuoteKey", () => {
 
 describe("placeBlocker", () => {
   const ready = { kind: "ready" as const, quote };
+  const base = {
+    stepsValid: true,
+    quote: ready,
+    payment: "wallet" as const,
+    walletBalance: 5000,
+    email: "ada@example.test",
+  };
 
   it("blocks until every step is valid", () => {
-    expect(placeBlocker({ stepsValid: false, quote: ready, payment: "wallet", walletBalance: 5000 })).toBe(
-      "Finish the steps above first.",
-    );
+    expect(placeBlocker({ ...base, stepsValid: false })).toBe("Finish the steps above first.");
   });
 
   it("blocks while the preview for the current inputs is still loading", () => {
-    expect(placeBlocker({ stepsValid: true, quote: { kind: "loading" }, payment: "wallet", walletBalance: 5000 })).toBe(
-      "Working out the price…",
-    );
-    expect(placeBlocker({ stepsValid: true, quote: { kind: "idle" }, payment: "wallet", walletBalance: 5000 })).toBe(
-      "Working out the price…",
-    );
+    expect(placeBlocker({ ...base, quote: { kind: "loading" } })).toBe("Working out the price…");
+    expect(placeBlocker({ ...base, quote: { kind: "idle" } })).toBe("Working out the price…");
   });
 
   it("blocks with the preview's own message when it failed", () => {
-    expect(
-      placeBlocker({
-        stepsValid: true,
-        quote: { kind: "error", message: "Out of coverage area" },
-        payment: "digital_payment",
-        walletBalance: null,
-      }),
-    ).toBe("Out of coverage area");
-  });
-
-  it("blocks without a payment method", () => {
-    expect(placeBlocker({ stepsValid: true, quote: ready, payment: null, walletBalance: null })).toBe("Pick how to pay.");
-  });
-
-  it("blocks a wallet payment the balance cannot cover", () => {
-    expect(placeBlocker({ stepsValid: true, quote: ready, payment: "wallet", walletBalance: 600 })).toBe(
-      "Your wallet is ₦300 short of the ₦900 total.",
+    expect(placeBlocker({ ...base, quote: { kind: "error", message: "Out of coverage area" } })).toBe(
+      "Out of coverage area",
     );
   });
 
+  it("blocks without a payment method", () => {
+    expect(placeBlocker({ ...base, payment: null })).toBe("Pick how to pay.");
+  });
+
+  it("blocks Pay Online without an email, before any order is created", () => {
+    expect(placeBlocker({ ...base, payment: "digital_payment", email: null })).toBe(
+      "Add an email on the Edit profile page to pay online, or pick another way to pay.",
+    );
+    expect(placeBlocker({ ...base, payment: "digital_payment", email: "  " })).toBe(
+      "Add an email on the Edit profile page to pay online, or pick another way to pay.",
+    );
+    expect(placeBlocker({ ...base, payment: "wallet", email: null })).toBeNull();
+    expect(placeBlocker({ ...base, payment: "digital_payment" })).toBeNull();
+  });
+
+  it("blocks a wallet payment the balance cannot cover", () => {
+    expect(placeBlocker({ ...base, walletBalance: 600 })).toBe("Your wallet is ₦300 short of the ₦900 total.");
+  });
+
   it("lets a covered or unknown wallet balance through", () => {
-    expect(placeBlocker({ stepsValid: true, quote: ready, payment: "wallet", walletBalance: 900 })).toBeNull();
-    expect(placeBlocker({ stepsValid: true, quote: ready, payment: "wallet", walletBalance: null })).toBeNull();
-    expect(placeBlocker({ stepsValid: true, quote: ready, payment: "cash_on_delivery", walletBalance: 0 })).toBeNull();
+    expect(placeBlocker({ ...base, walletBalance: 900 })).toBeNull();
+    expect(placeBlocker({ ...base, walletBalance: null })).toBeNull();
+    expect(placeBlocker({ ...base, payment: "offline_payment", walletBalance: 0 })).toBeNull();
   });
 });
 
@@ -1922,27 +1902,23 @@ describe("walletShortfall", () => {
 
 describe("parcelPlaceErrorMessage", () => {
   it("maps the zone codes placement returns", () => {
-    expect(parcelPlaceErrorMessage("zone", "wallet", "Out of coverage area")).toBe(
+    expect(parcelPlaceErrorMessage("zone", "Out of coverage area")).toBe(
       "We can't collect parcels from the pickup address any more. Pick another pickup address.",
     );
-    expect(parcelPlaceErrorMessage("receiverZone", "wallet", "Out of coverage")).toBe(
+    expect(parcelPlaceErrorMessage("receiverZone", "Out of coverage")).toBe(
       "We don't deliver to the drop-off address any more. Pick another drop-off.",
     );
   });
 
-  it("reads a 203 order_amount refusal by the payment method", () => {
-    expect(parcelPlaceErrorMessage("order_amount", "cash_on_delivery", "Amount crossed maximum")).toBe(
-      "This parcel is over the cash on delivery limit for the area. Choose Me as the payer and pay another way.",
-    );
-    expect(parcelPlaceErrorMessage("order_amount", "wallet", "Insufficient balance")).toBe(
+  it("reads a 203 order_amount refusal as a short wallet", () => {
+    expect(parcelPlaceErrorMessage("order_amount", "Insufficient balance")).toBe(
       "Your wallet balance is too low for this parcel. Top up on the Wallet page, or pay another way.",
     );
-    expect(parcelPlaceErrorMessage("order_amount", "digital_payment", "Something odd")).toBe("Something odd");
   });
 
   it("falls back to the server message, then to a generic line", () => {
-    expect(parcelPlaceErrorMessage(null, "wallet", "Server said no")).toBe("Server said no");
-    expect(parcelPlaceErrorMessage(null, "wallet", "")).toBe("We couldn't place your parcel. Please try again.");
+    expect(parcelPlaceErrorMessage(null, "Server said no")).toBe("Server said no");
+    expect(parcelPlaceErrorMessage(null, "")).toBe("We couldn't place your parcel. Please try again.");
   });
 });
 ```
@@ -1961,27 +1937,22 @@ import type { OrderQuote } from "@/lib/api/order-quote";
 import type { ZoneData } from "@/lib/api/zones";
 
 /**
- * Pure rules for who pays for a parcel and how, and for when it can be
- * placed. No React and no fetch, so the decisions that stop a customer
- * paying the wrong amount, or reaching a placement the backend refuses,
- * are tested directly.
+ * Pure rules for how a parcel is paid and when it can be placed. No
+ * React and no fetch, so the decisions that stop a customer paying the
+ * wrong amount, or reaching a placement the backend refuses, are tested
+ * directly.
+ *
+ * The sender always pays, up front. There is no cash on delivery.
  */
 
-export type ParcelPayer = "sender" | "receiver";
-
-export type ParcelPaymentMethod =
-  | "digital_payment"
-  | "wallet"
-  | "offline_payment"
-  | "cash_on_delivery";
+/** The same strings as PaymentMethod in payment-picker.tsx. */
+export type ParcelPaymentMethod = "digital_payment" | "wallet" | "offline_payment";
 
 export type PaymentGates = {
-  /** config.cash_on_delivery. Placement refuses cash when it is off. */
-  cashOnDelivery: boolean;
-  /** config.digital_payment. */
+  /** config.digital_payment. Placement refuses Pay Online when it is off. */
   digitalPayment: boolean;
   /** The pickup zone's own switches, from get-zone-id. */
-  zone: Pick<ZoneData, "cash_on_delivery" | "digital_payment" | "offline_payment">;
+  zone: Pick<ZoneData, "digital_payment" | "offline_payment">;
   /** canUseOfflinePayment() for the pickup zone. */
   offlineUsable: boolean;
 };
@@ -1991,30 +1962,10 @@ function isOn(flag: number | boolean | string | null | undefined): boolean {
 }
 
 /**
- * The receiver can only pay cash on delivery, so the option exists only
- * where cash is on both in config and in the pickup zone. The app
- * applies the same two switches.
+ * The methods food checkout offers (Pay Online, wallet, Pay Offline),
+ * less any the switches turn off. The wallet is always there.
  */
-export function allowedPayers(g: PaymentGates): ParcelPayer[] {
-  return g.cashOnDelivery && isOn(g.zone.cash_on_delivery)
-    ? ["sender", "receiver"]
-    : ["sender"];
-}
-
-export function effectivePayer(choice: ParcelPayer, g: PaymentGates): ParcelPayer {
-  return allowedPayers(g).includes(choice) ? choice : "sender";
-}
-
-/**
- * Receiver pays: cash on delivery only. Sender pays: the methods food
- * checkout offers (Pay Online, wallet, Pay Offline), less any the
- * switches turn off. Cash is not offered to a paying sender, matching
- * food checkout.
- */
-export function allowedMethods(payer: ParcelPayer, g: PaymentGates): ParcelPaymentMethod[] {
-  if (payer === "receiver") {
-    return allowedPayers(g).includes("receiver") ? ["cash_on_delivery"] : [];
-  }
+export function allowedMethods(g: PaymentGates): ParcelPaymentMethod[] {
   const methods: ParcelPaymentMethod[] = [];
   if (g.digitalPayment && isOn(g.zone.digital_payment)) methods.push("digital_payment");
   methods.push("wallet");
@@ -2023,11 +1974,10 @@ export function allowedMethods(payer: ParcelPayer, g: PaymentGates): ParcelPayme
 }
 
 export function effectivePayment(
-  payer: ParcelPayer,
   choice: ParcelPaymentMethod | null,
   g: PaymentGates,
 ): ParcelPaymentMethod | null {
-  const allowed = allowedMethods(payer, g);
+  const allowed = allowedMethods(g);
   if (choice !== null && allowed.includes(choice)) return choice;
   return allowed[0] ?? null;
 }
@@ -2037,7 +1987,6 @@ export type ParcelQuoteInputs = {
   pickup: { lat: number; lng: number };
   dropoff: { lat: number; lng: number };
   distanceKm: number;
-  payer: ParcelPayer;
   tip: number;
 };
 
@@ -2053,7 +2002,6 @@ export function parcelQuoteKey(i: ParcelQuoteInputs): string {
     i.dropoff.lat,
     i.dropoff.lng,
     i.distanceKm,
-    i.payer,
     i.tip,
   ].join("|");
 }
@@ -2070,18 +2018,24 @@ export function walletShortfall(total: number, balance: number | null): number {
 
 /**
  * Why "Place order" is disabled, or null when the parcel can be placed.
- * Only a ready preview for the current inputs lets the customer pay.
+ * Only a ready preview for the current inputs lets the customer pay, and
+ * Pay Online without an email is stopped here, before /order/place
+ * creates an order that could never be charged.
  */
 export function placeBlocker(a: {
   stepsValid: boolean;
   quote: ParcelQuoteView;
   payment: ParcelPaymentMethod | null;
   walletBalance: number | null;
+  email: string | null;
 }): string | null {
   if (!a.stepsValid) return "Finish the steps above first.";
   if (a.quote.kind === "error") return a.quote.message;
   if (a.quote.kind !== "ready") return "Working out the price…";
   if (a.payment === null) return "Pick how to pay.";
+  if (a.payment === "digital_payment" && !a.email?.trim()) {
+    return "Add an email on the Edit profile page to pay online, or pick another way to pay.";
+  }
   if (a.payment === "wallet") {
     const total = a.quote.quote.total;
     const short = walletShortfall(total, a.walletBalance);
@@ -2093,25 +2047,18 @@ export function placeBlocker(a: {
 }
 
 /**
- * Placement errors in plain words. "order_amount" arrives on a 203 for
- * two different reasons, told apart by the payment method: the wallet
- * cannot cover the total, or the total is over the zone's cash ceiling.
+ * Placement errors in plain words. A 203 "order_amount" means the wallet
+ * cannot cover the total (placement's cash ceiling never applies: there
+ * is no cash on delivery).
  */
-export function parcelPlaceErrorMessage(
-  code: string | null,
-  method: ParcelPaymentMethod,
-  fallback: string,
-): string {
+export function parcelPlaceErrorMessage(code: string | null, fallback: string): string {
   if (code === "zone") {
     return "We can't collect parcels from the pickup address any more. Pick another pickup address.";
   }
   if (code === "receiverZone") {
     return "We don't deliver to the drop-off address any more. Pick another drop-off.";
   }
-  if (code === "order_amount" && method === "cash_on_delivery") {
-    return "This parcel is over the cash on delivery limit for the area. Choose Me as the payer and pay another way.";
-  }
-  if (code === "order_amount" && method === "wallet") {
+  if (code === "order_amount") {
     return "Your wallet balance is too low for this parcel. Top up on the Wallet page, or pay another way.";
   }
   return fallback || "We couldn't place your parcel. Please try again.";
@@ -2121,7 +2068,7 @@ export function parcelPlaceErrorMessage(
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `npx vitest run src/lib/parcel/parcel-payment.test.ts`
-Expected: PASS (21 tests).
+Expected: PASS (18 tests).
 
 - [ ] **Step 5: Typecheck and lint**
 
@@ -2131,7 +2078,7 @@ Expected: clean.
 - [ ] **Step 6: Commit**
 
 ```powershell
-cd C:\laragon\www\biteexpress-web-app-parcel; git add src/lib/parcel/parcel-payment.ts src/lib/parcel/parcel-payment.test.ts; git commit -m "Add parcel payer and payment rules" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+cd C:\laragon\www\biteexpress-web-app-parcel; git add src/lib/parcel/parcel-payment.ts src/lib/parcel/parcel-payment.test.ts; git commit -m "Add parcel payment rules" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2144,7 +2091,7 @@ cd C:\laragon\www\biteexpress-web-app-parcel; git add src/lib/parcel/parcel-paym
 
 **Interfaces:**
 - Produces:
-  - `SettleMethod = "digital_payment" | "wallet" | "offline_payment" | "cash_on_delivery"`
+  - `SettleMethod = "digital_payment" | "wallet" | "offline_payment"` (exactly food checkout's methods; no cash on delivery branch)
   - `SettleInput = { orderId: number; amount: number; method: SettleMethod; successHref: string; email: string | null; offlineMethodId: number | null }`
   - `SettleDeps = { payWithPaystack(input: PaystackPaymentInput): Promise<PaystackResult>; confirmPaystackPayment(orderId: number, reference: string): Promise<ConfirmPaystackResult>; walletPayOrder(orderId: number): Promise<WalletPayResult>; sleep(ms: number): Promise<void>; now(): number }`
   - `SettleOutcome = { kind: "navigate"; href: string; error?: string } | { kind: "stay"; tone: "warn" | "error"; message: string }`
@@ -2208,18 +2155,6 @@ describe("settleOrder: offline payment", () => {
       kind: "navigate",
       href: "/checkout/offline/77",
     });
-  });
-});
-
-describe("settleOrder: cash on delivery", () => {
-  it("lands on the success target without taking any payment", async () => {
-    const d = deps();
-    expect(await settleOrder({ ...base, method: "cash_on_delivery", successHref: "/orders/77" }, d)).toEqual({
-      kind: "navigate",
-      href: "/orders/77",
-    });
-    expect(d.payWithPaystack).not.toHaveBeenCalled();
-    expect(d.walletPayOrder).not.toHaveBeenCalled();
   });
 });
 
@@ -2346,13 +2281,12 @@ import {
  * What happens after /order/place has created an order, shared by food
  * checkout and /send. The API calls and the Paystack popup come in as
  * deps so every branch can be tested without a browser.
+ *
+ * Every order is paid before it is attended to; there is no cash on
+ * delivery, so these three methods are the whole set.
  */
 
-export type SettleMethod =
-  | "digital_payment"
-  | "wallet"
-  | "offline_payment"
-  | "cash_on_delivery";
+export type SettleMethod = "digital_payment" | "wallet" | "offline_payment";
 
 export type SettleInput = {
   orderId: number;
@@ -2407,11 +2341,6 @@ export async function settleOrder(
         `/checkout/offline/${orderId}` +
         (input.offlineMethodId ? `?method=${input.offlineMethodId}` : ""),
     };
-  }
-
-  // Placement already recorded cash on delivery; nothing to take now.
-  if (input.method === "cash_on_delivery") {
-    return { kind: "navigate", href: input.successHref };
   }
 
   if (input.method === "digital_payment") {
@@ -2480,7 +2409,7 @@ export async function settleOrder(
 - [ ] **Step 5: Run it to verify it passes**
 
 Run: `npx vitest run src/lib/checkout/settle-order.test.ts`
-Expected: PASS (12 tests).
+Expected: PASS (11 tests).
 
 - [ ] **Step 6: Switch food checkout to the helper**
 
@@ -2572,7 +2501,7 @@ cd C:\laragon\www\biteexpress-web-app-parcel; git add src/lib/checkout/settle-or
 These components hold no decisions (every rule lives in Tasks 4 and 5), so their check is typecheck and lint rather than a unit test; vitest runs in node and the repo has no component tests.
 
 **Files:**
-- Create: `src/components/parcel/parcel-step.tsx`, `category-step.tsx`, `contact-fields.tsx`, `instruction-picker.tsx`, `payer-picker.tsx`, `tip-picker.tsx`, `parcel-price-card.tsx`
+- Create: `src/components/parcel/parcel-step.tsx`, `category-step.tsx`, `contact-fields.tsx`, `instruction-picker.tsx`, `tip-picker.tsx`, `parcel-price-card.tsx`
 - Modify: `src/components/checkout/address-picker-checkout.tsx:186` (export one function)
 
 **Interfaces:**
@@ -2581,11 +2510,10 @@ These components hold no decisions (every rule lives in Tasks 4 and 5), so their
   - `CategoryList = { kind: "loading" } | { kind: "ready"; categories: ParcelCategory[] } | { kind: "error"; message: string }`; `CategoryStep(props: { list: CategoryList; selectedId: number | null; onSelect: (c: ParcelCategory) => void })`
   - `ContactFields(props: { idPrefix: string; value: ParcelContact; onChange: (next: ParcelContact) => void; errors: ContactErrors; showEmail: boolean })`
   - `InstructionPicker(props: { instructions: ParcelInstruction[]; selectedId: number | null; onSelect: (id: number | null) => void; note: string; onNoteChange: (note: string) => void })`
-  - `PayerPicker(props: { value: ParcelPayer; onChange: (p: ParcelPayer) => void; receiverAllowed: boolean })`
   - `TIP_AMOUNTS: readonly number[]`; `TipPicker(props: { value: number; onChange: (amount: number) => void })`
   - `ParcelPriceCard(props: { quote: ParcelQuoteView; onRetry: () => void })`
   - `toCheckoutFromPicked(p: DeliveryLocation): CheckoutAddress` now exported from `address-picker-checkout.tsx`
-- Consumes: Task 2 types (`ParcelCategory`, `ParcelInstruction`), Task 4 (`ParcelContact`, `ContactErrors`), Task 5 (`ParcelPayer`, `ParcelQuoteView`), `cn` from `src/lib/cn.ts`.
+- Consumes: Task 2 types (`ParcelCategory`, `ParcelInstruction`), Task 4 (`ParcelContact`, `ContactErrors`), Task 5 (`ParcelQuoteView`), `cn` from `src/lib/cn.ts`.
 
 - [ ] **Step 1: Record the lint baseline for the one existing file**
 
@@ -2858,7 +2786,7 @@ function Field({
 }
 ```
 
-- [ ] **Step 6: Write the instruction, payer and tip pickers**
+- [ ] **Step 6: Write the instruction and tip pickers**
 
 `src/components/parcel/instruction-picker.tsx`:
 
@@ -2920,76 +2848,6 @@ export function InstructionPicker({ instructions, selectedId, onSelect, note, on
           className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 outline-none placeholder:text-ink-400 focus:border-brand-red/50 focus:ring-2 focus:ring-brand-red/20"
         />
       </div>
-    </div>
-  );
-}
-```
-
-`src/components/parcel/payer-picker.tsx`:
-
-```tsx
-"use client";
-
-import type { ParcelPayer } from "@/lib/parcel/parcel-payment";
-import { cn } from "@/lib/cn";
-
-const OPTIONS: Array<{ id: ParcelPayer; label: string; hint: string }> = [
-  { id: "sender", label: "Me", hint: "Pay now, online or from your wallet." },
-  { id: "receiver", label: "Receiver", hint: "The receiver pays the rider in cash on delivery." },
-];
-
-type Props = {
-  value: ParcelPayer;
-  onChange: (payer: ParcelPayer) => void;
-  receiverAllowed: boolean;
-};
-
-export function PayerPicker({ value, onChange, receiverAllowed }: Props) {
-  const options = OPTIONS.filter((o) => o.id === "sender" || receiverAllowed);
-  return (
-    <div className="space-y-2">
-      <div role="radiogroup" aria-label="Who pays" className="grid gap-3 sm:grid-cols-2">
-        {options.map((o) => {
-          const checked = o.id === value;
-          return (
-            <label
-              key={o.id}
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-all duration-200",
-                checked
-                  ? "border-transparent bg-white shadow-[0_0_0_2px_rgba(222,22,0,0.5),0_18px_42px_-18px_rgba(222,22,0,0.35)]"
-                  : "border-ink-200 bg-white hover:-translate-y-px hover:border-brand-red/30 hover:shadow-soft",
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
-                  checked ? "border-brand-red bg-brand-red" : "border-ink-300 bg-white",
-                )}
-              >
-                {checked && <span className="h-2 w-2 rounded-full bg-white" />}
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-ink-900">{o.label}</span>
-                <span className="mt-0.5 block text-xs text-ink-500">{o.hint}</span>
-              </span>
-              <input
-                type="radio"
-                name="parcel-payer"
-                checked={checked}
-                onChange={() => onChange(o.id)}
-                className="sr-only"
-              />
-            </label>
-          );
-        })}
-      </div>
-      {!receiverAllowed && (
-        <p className="text-xs text-ink-500">
-          Cash on delivery is off in this area, so the receiver can&apos;t pay for this parcel.
-        </p>
-      )}
     </div>
   );
 }
@@ -3191,14 +3049,11 @@ import {
 } from "@/lib/parcel/parcel-form";
 import {
   allowedMethods,
-  allowedPayers,
-  effectivePayer,
   effectivePayment,
   parcelPlaceErrorMessage,
   parcelQuoteKey,
   placeBlocker,
   walletShortfall,
-  type ParcelPayer,
   type ParcelPaymentMethod,
   type ParcelQuoteView,
   type PaymentGates,
@@ -3210,12 +3065,11 @@ import {
   toCheckoutFromPicked,
   type CheckoutAddress,
 } from "@/components/checkout/address-picker-checkout";
-import { PaymentPicker, type PaymentMethod } from "@/components/checkout/payment-picker";
+import { PaymentPicker } from "@/components/checkout/payment-picker";
 import { ParcelStep } from "./parcel-step";
 import { CategoryStep, type CategoryList } from "./category-step";
 import { ContactFields } from "./contact-fields";
 import { InstructionPicker } from "./instruction-picker";
-import { PayerPicker } from "./payer-picker";
 import { TipPicker } from "./tip-picker";
 import { ParcelPriceCard } from "./parcel-price-card";
 
@@ -3259,7 +3113,6 @@ export function SendParcelFlow() {
 
   const [instructionId, setInstructionId] = useState<number | null>(null);
   const [note, setNote] = useState("");
-  const [payerChoice, setPayerChoice] = useState<ParcelPayer>("sender");
   const [paymentChoice, setPaymentChoice] = useState<ParcelPaymentMethod | null>(null);
   const [offlineMethodId, setOfflineMethodId] = useState<number | null>(null);
   const [tip, setTip] = useState(0);
@@ -3419,7 +3272,6 @@ export function SendParcelFlow() {
   const gates: PaymentGates | null =
     pickupZone && pickupZone.ok
       ? {
-          cashOnDelivery: config?.cash_on_delivery ?? false,
           // A config hiccup must not hide the main way to pay; the
           // backend still enforces the switch.
           digitalPayment: config?.digital_payment ?? true,
@@ -3431,15 +3283,12 @@ export function SendParcelFlow() {
           }),
         }
       : null;
-  const payer: ParcelPayer = gates ? effectivePayer(payerChoice, gates) : "sender";
+  // The sender always pays, up front: Pay Online, wallet or Pay Offline.
   const payment: ParcelPaymentMethod | null = gates
-    ? effectivePayment(payer, paymentChoice, gates)
+    ? effectivePayment(paymentChoice, gates)
     : null;
-  const senderMethods: PaymentMethod[] = gates
-    ? allowedMethods("sender", gates).filter(
-        (m): m is PaymentMethod => m !== "cash_on_delivery",
-      )
-    : [];
+  const methods: ParcelPaymentMethod[] = gates ? allowedMethods(gates) : [];
+  const email = user?.email ?? null;
   // Placement drops the tip when tips are off; the preview would not.
   const tipsEnabled = config?.dm_tips_status === 1;
   const effectiveTip = tipsEnabled ? tip : 0;
@@ -3465,7 +3314,7 @@ export function SendParcelFlow() {
           sender: {
             name: sender.name.trim(),
             phone: normalizePhone(sender.phone) ?? sender.phone.trim(),
-            email: user?.email ?? null,
+            email,
             house: sender.house.trim(),
             floor: sender.floor.trim(),
             road: sender.road.trim(),
@@ -3473,7 +3322,6 @@ export function SendParcelFlow() {
           receiverDetails: buildReceiverDetails(dropoff, receiver, dropZone.zoneId),
           distance,
           parcelCategoryId: category.id,
-          chargePayer: payer,
           paymentMethod: payment,
           dmTips: effectiveTip,
           deliveryInstruction: deliveryInstruction(instructionText, note),
@@ -3487,7 +3335,6 @@ export function SendParcelFlow() {
           pickup: orderInput.pickup,
           dropoff,
           distanceKm: orderInput.distance,
-          payer,
           tip: effectiveTip,
         })}#${retryNonce}`
       : null;
@@ -3521,6 +3368,7 @@ export function SendParcelFlow() {
     quote: quoteView,
     payment,
     walletBalance,
+    email,
   });
   const shortfall =
     payment === "wallet" && quoteView.kind === "ready"
@@ -3547,20 +3395,15 @@ export function SendParcelFlow() {
   }
 
   async function handlePlace() {
+    // placeBlocker already refuses Pay Online without an email, so no
+    // order is created that could never be charged.
     if (!orderInput || blocker !== null || placing) return;
-    const email = user?.email ?? null;
-    if (orderInput.paymentMethod === "digital_payment" && !email) {
-      toast.warn(
-        "We need an email on file to charge a card. Add one on the Edit profile page and try again.",
-      );
-      return;
-    }
 
     setPlacing(true);
     const res = await placeParcelOrder(orderInput);
     if (!res.ok) {
       setPlacing(false);
-      toast.error(parcelPlaceErrorMessage(res.code, orderInput.paymentMethod, res.message));
+      toast.error(parcelPlaceErrorMessage(res.code, res.message));
       return;
     }
 
@@ -3712,31 +3555,21 @@ export function SendParcelFlow() {
                 onNoteChange={setNote}
               />
             </Block>
-            <Block title="Who pays">
-              <PayerPicker
-                value={payer}
-                onChange={setPayerChoice}
-                receiverAllowed={gates !== null && allowedPayers(gates).includes("receiver")}
-              />
-            </Block>
             <Block title="Payment">
-              {payer === "receiver" ? (
-                <p className="rounded-2xl border border-ink-200 bg-canvas-sunken p-4 text-sm text-ink-700">
-                  The receiver pays the rider in cash when the parcel arrives.
-                </p>
-              ) : (
-                <PaymentPicker
-                  value={payment && payment !== "cash_on_delivery" ? payment : null}
-                  onChange={setPaymentChoice}
-                  allow={senderMethods}
-                  walletBalance={walletBalance}
-                  orderTotal={quoteView.kind === "ready" ? quoteView.quote.total : null}
-                  offlineEnabled={senderMethods.includes("offline_payment")}
-                  offlineMethods={offlineMethods}
-                  offlineMethodId={chosenOfflineMethodId}
-                  onOfflineMethodChange={setOfflineMethodId}
-                />
-              )}
+              <p className="mb-3 text-sm text-ink-500">
+                You pay now, before a rider is sent.
+              </p>
+              <PaymentPicker
+                value={payment}
+                onChange={setPaymentChoice}
+                allow={methods}
+                walletBalance={walletBalance}
+                orderTotal={quoteView.kind === "ready" ? quoteView.quote.total : null}
+                offlineEnabled={methods.includes("offline_payment")}
+                offlineMethods={offlineMethods}
+                offlineMethodId={chosenOfflineMethodId}
+                onOfflineMethodChange={setOfflineMethodId}
+              />
             </Block>
             {tipsEnabled && (
               <Block title="Tip your rider">
@@ -4080,7 +3913,6 @@ cd C:\laragon\www\biteexpress-web-app-parcel; git add src/lib/module-entry.ts sr
   - `mapPoints(o): { destination: LatLng | null; pickup: LatLng | null }`
   - `AddressCard = { label: "Pickup" | "Drop-off" | "Delivery"; address: string; name: string | null; phone: string | null }`; `addressCards(o): AddressCard[]`
   - `Milestone = { status: MilestoneStatus; label: string }`; `milestonesFor(o): Milestone[]`; `milestoneIndex(milestones: readonly Milestone[], status: OrderStatus): number`
-  - `payerLabel(payer: string | null | undefined): string`
 - Consumes: `OrderSummary`, `OrderStatus` (orders.ts, with Task 3's parcel fields), `MilestoneStatus` (tracking.ts).
 
 - [ ] **Step 1: Record the lint baseline**
@@ -4102,7 +3934,6 @@ import {
   milestoneIndex,
   milestonesFor,
   orderHeading,
-  payerLabel,
   receiverName,
   toLatLng,
 } from "./parcel-order";
@@ -4137,7 +3968,6 @@ const parcel = order({
     contact_person_name: "Bola Ade",
     contact_person_number: "+2348098765432",
   },
-  charge_payer: "receiver",
 });
 
 const food = order({
@@ -4245,14 +4075,6 @@ describe("milestonesFor and milestoneIndex", () => {
     expect(milestoneIndex(f, "processing")).toBe(2);
     expect(milestoneIndex(f, "picked_up")).toBe(3);
     expect(milestoneIndex(f, "price_check")).toBe(0);
-  });
-});
-
-describe("payerLabel", () => {
-  it("says who pays", () => {
-    expect(payerLabel("sender")).toBe("You");
-    expect(payerLabel("receiver")).toBe("Receiver, cash on delivery");
-    expect(payerLabel(null)).toBe("Not set");
   });
 });
 ```
@@ -4404,18 +4226,12 @@ export function milestoneIndex(milestones: readonly Milestone[], status: OrderSt
   }
   return 0;
 }
-
-export function payerLabel(payer: string | null | undefined): string {
-  if (payer === "receiver") return "Receiver, cash on delivery";
-  if (payer === "sender") return "You";
-  return "Not set";
-}
 ```
 
 - [ ] **Step 5: Run it to verify it passes**
 
 Run: `npx vitest run src/lib/parcel/parcel-order.test.ts`
-Expected: PASS (13 tests).
+Expected: PASS (12 tests).
 
 - [ ] **Step 6: Wire the order page**
 
@@ -4454,7 +4270,6 @@ import {
   milestoneIndex,
   milestonesFor,
   orderHeading,
-  payerLabel,
   type Milestone,
 } from "@/lib/parcel/parcel-order";
 import { OrderStatusPill } from "./order-status-pill";
@@ -4712,10 +4527,6 @@ function ParcelCard({ order }: { order: OrderTrack }) {
           <dt className="text-ink-500">Instructions</dt>
           <dd className="text-right text-ink-900">{instruction ?? "None"}</dd>
         </div>
-        <div className="flex items-start justify-between gap-3">
-          <dt className="text-ink-500">Who pays</dt>
-          <dd className="text-right text-ink-900">{payerLabel(order.charge_payer)}</dd>
-        </div>
       </dl>
     </CardLite>
   );
@@ -4810,7 +4621,7 @@ export function orderListTitle(
 - [ ] **Step 5: Run it to verify it passes**
 
 Run: `npx vitest run src/lib/parcel/parcel-order.test.ts`
-Expected: PASS (15 tests).
+Expected: PASS (14 tests).
 
 - [ ] **Step 6: Use it in the list**
 
@@ -4914,7 +4725,7 @@ Expected: both empty. Nothing is pushed.
 
 ## Task 13: Live pass in Edge (evidence only, never pushes)
 
-Proves the parts no unit test reaches: the real browser flow, the preview total against the placed total, tracking, and food checkout through `settleOrder`. Uses the local dev DB (`biteexpress`), whose parcel module is id 6 with zones 2 to 5 (Kaduna and Sokoto), all with `cash_on_delivery = 0` and `offline_payment = 0`. The run switches one zone on and restores it at the end.
+Proves the parts no unit test reaches: the real browser flow, the preview total against the placed total, tracking, and food checkout through `settleOrder`. Uses the local dev DB (`biteexpress`), whose parcel module is id 6 with zones 2 to 5 (Kaduna and Sokoto), all with `offline_payment = 0`. The run switches Pay Offline on in one zone so both the offline redirect and the wallet path can be exercised, and restores it at the end. Cash on delivery is never touched: not read, not switched on, not used.
 
 **Files:** none in either repo. Scratch files only, under your session scratchpad; set `$Scratch` to that directory's path in every PowerShell call below.
 
@@ -4945,12 +4756,12 @@ $zoneId = 3; // Kaduna North; offers module 6 (parcel).
 $snapshotPath = getenv('LIVE_SNAPSHOT');
 
 file_put_contents($snapshotPath, json_encode([
-    'zone' => DB::table('zones')->where('id', $zoneId)->first(['id', 'cash_on_delivery', 'offline_payment']),
-    'settings' => DB::table('business_settings')->whereIn('key', ['cash_on_delivery', 'offline_payment_status'])->get(['key', 'value']),
+    'zone' => DB::table('zones')->where('id', $zoneId)->first(['id', 'offline_payment']),
+    'settings' => DB::table('business_settings')->whereIn('key', ['offline_payment_status'])->get(['key', 'value']),
 ]));
 
-DB::table('zones')->where('id', $zoneId)->update(['cash_on_delivery' => 1, 'offline_payment' => 1]);
-DB::table('business_settings')->where('key', 'cash_on_delivery')->update(['value' => json_encode(['status' => 1])]);
+// Pay Offline only. Cash on delivery stays exactly as it is.
+DB::table('zones')->where('id', $zoneId)->update(['offline_payment' => 1]);
 DB::table('business_settings')->where('key', 'offline_payment_status')->update(['value' => '1']);
 
 $user = User::where('email', 'parcel-live@example.test')->first()
@@ -4970,7 +4781,8 @@ foreach (['status' => 1, 'is_phone_verified' => 1, 'is_email_verified' => 1] as 
     }
 }
 
-echo "zone {$zoneId} switched on; customer {$user->id} +2348000000999 / ParcelLive123 wallet 50000\n";
+$methods = DB::table('offline_payment_methods')->where('status', 1)->count();
+echo "zone {$zoneId} Pay Offline on; {$methods} active offline methods; customer {$user->id} +2348000000999 / ParcelLive123 wallet 50000\n";
 ```
 
 Run it and clear the local cache:
@@ -4979,7 +4791,7 @@ Run it and clear the local cache:
 cd C:\laragon\www\dashboard.bite.express; $env:LIVE_SNAPSHOT="$Scratch\live-snapshot.json"; php artisan tinker "$Scratch\live-prep.php"; php artisan cache:clear
 ```
 
-Expected: the echo line, and `live-snapshot.json` written.
+Expected: the echo line, and `live-snapshot.json` written. If the echo reports 0 active offline methods, Pay Offline stays hidden (its third gate), and steps 5.4 and 5.8 use the Paystack fallback described there.
 
 - [ ] **Step 3: Serve the backend (branch `parcel-preview-surge`) with opcache and the CA bundle**
 
@@ -5010,12 +4822,12 @@ Use the Playwright MCP browser tools if they run Edge; otherwise a scratchpad No
 
 1. On `http://localhost:3100/`, pick an address in Kaduna North as the delivery location. Sign in on `/signin` with `+2348000000999` / `ParcelLive123`.
 2. `/browse`: the parcel module card reads "Send a package across town" and links to `/send`. Screenshot.
-3. Parcel A, receiver pays cash: on `/send` pick a category; keep the pickup; drop-off another Kaduna address; receiver name and phone; choose a preset instruction and a note; Who pays: Receiver. Screenshot the price card, note its total, place the order. Expected landing: `/orders/{id}` with "Parcel to {receiver}", Pickup and Drop-off cards, the Parcel card (type, instruction, "Receiver, cash on delivery") and a timeline without "Being prepared". Screenshot.
-4. Parcel B, sender pays from wallet: same flow, Who pays: Me, Payment: Wallet balance. Note the price card total, place, land on `/orders/{id}`. Screenshot.
+3. Parcel A, sender pays from wallet: on `/send` pick a category; keep the pickup; drop-off another Kaduna address; receiver name and phone; choose a preset instruction and a note. In step 3 confirm there is no payer choice and no cash option, only the methods the switches allow. Payment: Wallet balance. Screenshot the price card, note its total, place the order. Expected landing: `/orders/{id}` with "Parcel to {receiver}", Pickup and Drop-off cards, the Parcel card (type, instruction) and a timeline without "Being prepared". Screenshot.
+4. Parcel B, sender pays by Pay Offline: same flow, Payment: Pay Offline. Note the price card total, place. Expected landing: `/checkout/offline/{id}?method=...`; submit the transfer form with test details, then open `/orders/{id}`. Screenshot. If no offline method exists locally, use Pay Online instead: with a Paystack test key in `.env.local`, pay with Paystack's test card and expect `/orders/{id}` with the order paid; without a test key, close the popup and expect the "Payment cancelled" toast with the form re-enabled (the parcel then exists at `order_status = failed`). Record which path ran.
 5. Error paths while on `/send`: pick a drop-off outside every zone (for example Lagos) and confirm the inline "We don't deliver to this address yet" note appears at pick time. Screenshot.
-6. `/orders`: both parcels read "Parcel to {receiver}" with the package icon and no "0 items". Screenshot.
+6. `/orders`: both parcels read "Parcel to {receiver}" with the package icon and no "0 items" (a parcel left at `failed` in step 4 is hidden by the list, which is expected). Screenshot.
 7. Food order 1, wallet: add an item from any open store in Kaduna North, check out with Wallet balance. Expected: `/checkout/success?order_id=...` and an emptied cart.
-8. Food order 2, Pay Offline (zone 3 now allows it): check out with Pay Offline. Expected: `/checkout/offline/{id}?method=...`. If no offline method is configured locally, instead choose Pay Online and close the Paystack popup: expected toast "Payment cancelled. Order #... is on hold. Re-place it when you're ready." and the checkout form re-enabled. Record which path ran.
+8. Food order 2, Pay Offline: check out with Pay Offline. Expected: `/checkout/offline/{id}?method=...`. If no offline method is configured locally, use the same Pay Online fallback as step 4. Record which path ran.
 
 - [ ] **Step 6: Prove preview equals placement from the DB**
 
@@ -5042,11 +4854,11 @@ In one PowerShell call (environment variables do not survive between calls), set
 cd C:\laragon\www\dashboard.bite.express; $env:LIVE_ORDER_IDS='100231,100232,100233,100234'; php artisan tinker "$Scratch\live-evidence.php"
 ```
 
-Expected: each parcel's `order_amount` equals the total its price card showed; Parcel A `charge_payer=receiver`, `payment_method=cash_on_delivery`; Parcel B `payment_method=wallet`, `payment_status=paid`; `receiver_details` carries the twelve keys with a numeric `zone_id`; food 1 `payment_status=paid`.
+Expected: each parcel's `order_amount` equals the total its price card showed; both parcels have `charge_payer=sender`; Parcel A `payment_method=wallet`, `payment_status=paid`; Parcel B `payment_method=offline_payment` (or `digital_payment` on the fallback); no order has `payment_method=cash_on_delivery`; `receiver_details` carries the twelve keys with a numeric `zone_id`; food 1 `payment_status=paid`.
 
 - [ ] **Step 7: Optional, map points on a moving parcel**
 
-Only if a local rider with a recent location exists: through `php artisan tinker --execute`, record Parcel B's `delivery_man_id` and `order_status`, then set them to that rider's id and `'picked_up'` with `DB::table('orders')->where('id', $parcelB)->update([...])`, reload Parcel B's order page, confirm the map renders with the drop-off as destination and the pickup as the second pin, and the "Your rider is ... away" line measures to the drop-off. Screenshot, then set the two columns back to their earlier values.
+Only if a local rider with a recent location exists: through `php artisan tinker --execute`, record Parcel A's `delivery_man_id` and `order_status`, then set them to that rider's id and `'picked_up'` with `DB::table('orders')->where('id', $parcelA)->update([...])`, reload Parcel A's order page, confirm the map renders with the drop-off as destination and the pickup as the second pin, and the "Your rider is ... away" line measures to the drop-off. Screenshot, then set the two columns back to their earlier values.
 
 - [ ] **Step 8: Stop servers and restore**
 
@@ -5069,7 +4881,6 @@ if (DB::getDatabaseName() !== 'biteexpress') {
 
 $snapshot = json_decode(file_get_contents(getenv('LIVE_SNAPSHOT')), true);
 DB::table('zones')->where('id', $snapshot['zone']['id'])->update([
-    'cash_on_delivery' => $snapshot['zone']['cash_on_delivery'],
     'offline_payment' => $snapshot['zone']['offline_payment'],
 ]);
 foreach ($snapshot['settings'] as $row) {
@@ -5086,4 +4897,4 @@ Expected: the restore line. If `resources/lang/en/messages.php` is listed (brows
 
 - [ ] **Step 9: Report**
 
-Hand back: the four order ids, the evidence JSON, each price-card total next to its `order_amount`, which food payment path ran in step 5.8, screenshot paths, console error counts per page, and anything that did not match. No commit and no push in this task.
+Hand back: the four order ids, the evidence JSON, each price-card total next to its `order_amount`, which payment path ran in steps 5.4 and 5.8, screenshot paths, console error counts per page, and anything that did not match. No commit and no push in this task.
