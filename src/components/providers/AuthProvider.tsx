@@ -17,7 +17,7 @@ export function AuthProvider() {
   useEffect(() => {
     hydrate();
 
-    const onExpired = () => signOut();
+    const onExpired = () => signOut({ expired: true });
     const onStorage = (e: StorageEvent) => {
       if (e.key === "biteexpress.auth") hydrate();
     };

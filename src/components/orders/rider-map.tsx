@@ -8,6 +8,7 @@ import {
   subscribeRiderLocation,
   type RiderLocationEvent,
 } from "@/lib/order-channel";
+import { isStaleFix, newerFix, type RiderFix } from "@/lib/tracking";
 import { cn } from "@/lib/cn";
 
 type LatLng = { lat: number; lng: number };
@@ -18,6 +19,8 @@ type Props = {
   /** Optional store/pickup point — when provided we drop a third
    *  marker for it and frame all three in view. */
   pickup?: LatLng | null;
+  /** Latest position from the track poll, if any. */
+  fix: RiderFix | null;
   className?: string;
 };
 
@@ -33,24 +36,31 @@ type Props = {
  *       → "Waiting for rider's location…" overlay on a static map
  *         centred on the delivery address.
  *
- * No HTTP fallback exists for rider GPS — there's no
- * `last_known_location` endpoint on the backend today. If Reverb is
- * down the marker just never appears; the order's status timeline
- * (which DOES have an HTTP poll fallback) still drives the rest of
- * the page.
+ * The rider position comes from the track poll (`fix`) and from Reverb
+ * when it is running; whichever is newer wins. After two minutes without
+ * a new position the footer says the location is not updating.
  */
 export function RiderMap({
   deliverymanId,
   destination,
   pickup,
+  fix,
   className,
 }: Props) {
   const { isLoaded, loadError } = useGoogleMaps();
   const hasKey = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
 
-  const [rider, setRider] = useState<LatLng | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [liveFix, setLiveFix] = useState<RiderFix | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const current = newerFix(fix, liveFix);
+  const rider: LatLng | null = current ? { lat: current.lat, lng: current.lng } : null;
   const mapRef = useRef<google.maps.Map | null>(null);
+
+  // Keeps "Updated Xs ago" and the stale check moving between polls.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Subscribe to live rider location.
   useEffect(() => {
@@ -58,8 +68,7 @@ export function RiderMap({
       const lat = Number(evt.latitude);
       const lng = Number(evt.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      setRider({ lat, lng });
-      setLastUpdate(new Date());
+      setLiveFix({ lat, lng, at: Date.now() });
     });
     return unsubscribe;
   }, [deliverymanId]);
@@ -68,13 +77,14 @@ export function RiderMap({
   useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
     const points: LatLng[] = [destination];
-    if (rider) points.push(rider);
+    if (current) points.push({ lat: current.lat, lng: current.lng });
     if (pickup) points.push(pickup);
     if (points.length < 2) return;
     const bounds = new google.maps.LatLngBounds();
     for (const p of points) bounds.extend(p);
     mapRef.current.fitBounds(bounds, 64);
-  }, [rider, destination, pickup, isLoaded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.lat, current?.lng, destination.lat, destination.lng, pickup?.lat, pickup?.lng, isLoaded]);
 
   const initialCenter = useMemo<LatLng>(
     () => rider ?? pickup ?? destination,
@@ -157,11 +167,7 @@ export function RiderMap({
         )}
       </div>
 
-      <Footer
-        rider={rider}
-        lastUpdate={lastUpdate}
-        hasPickup={!!pickup}
-      />
+      <Footer fix={current} now={now} hasPickup={!!pickup} />
     </Card>
   );
 }
@@ -188,14 +194,15 @@ function Card({
 }
 
 function Footer({
-  rider,
-  lastUpdate,
+  fix,
+  now,
   hasPickup,
 }: {
-  rider: LatLng | null;
-  lastUpdate: Date | null;
+  fix: RiderFix | null;
+  now: number;
   hasPickup: boolean;
 }) {
+  const stale = isStaleFix(fix, now);
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-3 text-xs text-ink-600">
       <LegendDot color="#de1600" label="Delivery" icon={<MapPin size={11} />} />
@@ -203,10 +210,12 @@ function Footer({
         <LegendDot color="#ff6b4a" label="Shop" icon={<MapPin size={11} />} />
       )}
       <LegendDot color="#111111" label="Rider" icon={<Bike size={11} />} />
-      <span className="ml-auto text-[11px] text-ink-500">
-        {rider && lastUpdate
-          ? `Updated ${formatRelative(lastUpdate)}`
-          : "No update yet"}
+      <span className={cn("ml-auto text-[11px]", stale ? "font-medium text-ink-900" : "text-ink-500")}>
+        {!fix
+          ? "No update yet"
+          : stale
+            ? `Location not updating (last ${formatRelative(new Date(fix.at))})`
+            : `Updated ${formatRelative(new Date(fix.at))}`}
       </span>
     </div>
   );

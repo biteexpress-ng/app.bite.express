@@ -6,6 +6,7 @@ import { Bell } from "lucide-react";
 import { useAuth } from "@/lib/auth-store";
 import { fetchNotifications } from "@/lib/api/notifications";
 import { useNotificationsSeen } from "@/lib/notifications-store";
+import { onOrderPush } from "@/lib/push-events";
 import { cn } from "@/lib/cn";
 
 /**
@@ -15,7 +16,7 @@ import { cn } from "@/lib/cn";
  *     window focus, compares each item's created_at against the
  *     locally-tracked lastSeenAt to surface an unread count.
  *
- * No real-time channel exists today — pure HTTP poll.
+ * Refetches when a push lands, otherwise polls.
  */
 export function NotificationsBell({ className }: { className?: string }) {
   const token = useAuth((s) => s.token);
@@ -48,10 +49,14 @@ export function NotificationsBell({ className }: { className?: string }) {
       refresh();
     }
     window.addEventListener("focus", onFocus);
+    const offPush = onOrderPush(() => {
+      void refresh();
+    });
     return () => {
       cancelled = true;
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
+      offPush();
     };
   }, [token, lastSeenAt]);
 

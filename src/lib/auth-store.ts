@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { clearAuth, readAuth, writeAuth, type AuthUser } from "./auth";
+import { dropPushOnSignOut } from "./push";
 
 /**
  * Auth store — single source of truth for the React tree.
@@ -21,7 +22,7 @@ type AuthState = {
 
   hydrate: () => void;
   signIn: (token: string, user: AuthUser) => void;
-  signOut: () => void;
+  signOut: (opts?: { expired?: boolean }) => void;
   setUser: (user: AuthUser) => void;
 };
 
@@ -41,7 +42,11 @@ export const useAuth = create<AuthState>((set, get) => ({
     set({ token, user, hydrated: true });
   },
 
-  signOut: () => {
+  signOut: (opts) => {
+    // Capture the token before clearing it: the server unsubscribe needs it.
+    // An expired token would only 401, so skip the server call then.
+    const token = opts?.expired ? null : get().token;
+    void dropPushOnSignOut(token);
     clearAuth();
     set({ token: null, user: null, hydrated: true });
   },

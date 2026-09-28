@@ -5,6 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { dmSans, dmSerifDisplay } from "@/lib/fonts";
 import { siteConfig } from "@/lib/site-config";
 import { AuthProvider } from "@/components/providers/AuthProvider";
+import { PushBootstrap } from "@/components/notifications/push-bootstrap";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { Toaster } from "@/components/ui/toaster";
@@ -20,6 +21,8 @@ export const metadata: Metadata = {
   description:
     "Order from your favourite restaurants, supermarkets, pharmacies and local stores. Live tracking, secure payments, every neighbourhood in Nigeria.",
   applicationName: siteConfig.name,
+  appleWebApp: { capable: true, title: siteConfig.name, statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
   formatDetection: { email: false, address: false, telephone: false },
   robots: { index: false, follow: false },
 };
@@ -50,6 +53,7 @@ export default async function RootLayout({
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <AuthProvider />
+          <PushBootstrap />
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <SiteFooter />

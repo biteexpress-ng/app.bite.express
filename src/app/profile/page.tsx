@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Container } from "@/components/ui/container";
 import { RouteGuard } from "@/components/auth/route-guard";
 import { ProfileCard } from "@/components/profile/profile-card";
+import { PushSettingsCard } from "@/components/profile/push-settings-card";
 
 export const metadata: Metadata = {
   title: "Your profile",
@@ -21,6 +22,7 @@ export default function ProfilePage() {
         </header>
         <RouteGuard>
           <ProfileCard />
+          <PushSettingsCard />
         </RouteGuard>
       </Container>
     </section>
