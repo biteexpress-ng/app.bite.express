@@ -6,6 +6,28 @@ import type { DeliveryLocation } from "@/lib/location-store";
 import { toast } from "@/lib/toast";
 
 /**
+ * Reverse-geocodes a point to a human-readable address via the Maps
+ * JS API. Returns null when Maps isn't loaded or the geocode fails;
+ * callers fall back to a generic label.
+ *
+ * Shared by useCurrentLocation() below and the location handoff from
+ * the marketing site, so the two don't drift apart.
+ */
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<string | null> {
+  if (typeof google === "undefined") return null;
+  try {
+    const geocoder = new google.maps.Geocoder();
+    const { results } = await geocoder.geocode({ location: { lat, lng } });
+    return results?.[0]?.formatted_address ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Browser geolocation + Google reverse geocode, shared by every
  * "Use my current location" control (header sheet, home hero).
  *
@@ -40,18 +62,9 @@ export function useCurrentLocation() {
         async (pos) => {
           const { latitude: lat, longitude: lng } = pos.coords;
           let formattedAddress = "Your current location";
-          if (isLoaded && typeof google !== "undefined") {
-            try {
-              const geocoder = new google.maps.Geocoder();
-              const { results } = await geocoder.geocode({
-                location: { lat, lng },
-              });
-              if (results?.[0]?.formatted_address) {
-                formattedAddress = results[0].formatted_address;
-              }
-            } catch {
-              /* keep the generic label */
-            }
+          if (isLoaded) {
+            const address = await reverseGeocode(lat, lng);
+            if (address) formattedAddress = address;
           }
           finish({ formattedAddress, lat, lng });
         },

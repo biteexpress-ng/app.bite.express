@@ -6,8 +6,13 @@ import { dmSans, dmSerifDisplay } from "@/lib/fonts";
 import { siteConfig } from "@/lib/site-config";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { PushBootstrap } from "@/components/notifications/push-bootstrap";
+import { AppDownloadBanner } from "@/components/app-nudge/app-download-banner";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
+import {
+  MobileTabBar,
+  MobileTabBarSpacer,
+} from "@/components/layout/mobile-tab-bar";
 import { Toaster } from "@/components/ui/toaster";
 import { PAYSTACK_SCRIPT_SRC } from "@/lib/paystack";
 import "./globals.css";
@@ -35,6 +40,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default async function RootLayout({
@@ -55,9 +61,12 @@ export default async function RootLayout({
           <AuthProvider />
           <PushBootstrap />
           <SiteHeader />
+          <AppDownloadBanner />
           <main className="flex-1">{children}</main>
+          <MobileTabBar />
           <SiteFooter />
           <Toaster />
+          <MobileTabBarSpacer />
         </NextIntlClientProvider>
 
         <Script src={PAYSTACK_SCRIPT_SRC} strategy="afterInteractive" />

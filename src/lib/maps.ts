@@ -20,6 +20,13 @@ import { useJsApiLoader } from "@react-google-maps/api";
 
 const LIBRARIES: ("places" | "geometry")[] = ["places", "geometry"];
 
+/** Whether a Maps key is configured at all, independent of whether the
+ *  script has finished loading. Callers use this to decide whether to
+ *  attempt Maps-dependent work or degrade straight to a plain input. */
+export function hasGoogleMapsKey(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+}
+
 export function useGoogleMaps() {
   return useJsApiLoader({
     id: "biteexpress-google-maps",

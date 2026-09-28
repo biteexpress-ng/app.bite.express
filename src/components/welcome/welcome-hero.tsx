@@ -6,6 +6,7 @@ import { Sparkles, Bike, ShieldCheck, Clock } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { AddressPicker } from "@/components/address/address-picker";
 import { ZoneResult } from "./zone-result";
+import { LocationHandoff } from "./location-handoff";
 import { useLocation, type DeliveryLocation } from "@/lib/location-store";
 
 /**
@@ -21,6 +22,7 @@ export function WelcomeHero() {
   const stored = useLocation((s) => s.location);
   const hydrate = useLocation((s) => s.hydrate);
   const [picked, setPicked] = useState<DeliveryLocation | null>(null);
+  const [handoffQuery, setHandoffQuery] = useState<string | null>(null);
   const heroRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -104,8 +106,11 @@ export function WelcomeHero() {
               variant="dark"
               onPick={setPicked}
               showCurrentLocation
+              initialQuery={handoffQuery ?? undefined}
+              autoFocus={handoffQuery !== null}
             />
           </div>
+          <LocationHandoff onNeedsInput={setHandoffQuery} />
           {active && <ZoneResult location={active} />}
         </div>
 
