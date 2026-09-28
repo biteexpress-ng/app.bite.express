@@ -53,6 +53,7 @@ export function SiteHeader() {
 
   return (
     <header
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
       className={cn(
         "sticky top-0 z-40 w-full transition-[background,box-shadow,border-color] duration-300",
         scrolled
@@ -132,15 +133,6 @@ export function SiteHeader() {
         {/* Mobile right cluster */}
         <div className="-mr-2 flex items-center gap-1 md:hidden">
           <NotificationsBell className="!border-0 hover:bg-ink-100" />
-          <Link
-            href="/cart"
-            aria-label="Cart"
-            onClick={() => setOpen(false)}
-            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-900 hover:bg-ink-100"
-          >
-            <ShoppingBag size={20} strokeWidth={1.8} />
-            <CartBadge />
-          </Link>
           <button
             type="button"
             className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-900 transition-colors hover:bg-ink-100"
