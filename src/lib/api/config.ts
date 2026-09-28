@@ -12,13 +12,22 @@ import { api } from "@/lib/api-client";
  * `offline_payment_status` is emitted as an int 0|1 at
  * ConfigController.php:396 and is the ONLY offline-payment gate the
  * backend actually enforces (PlaceNewOrder.php:681-685).
+ *
+ * `digital_payment` is the global Pay Online switch; placement refuses
+ * digital_payment when it is off. `dm_tips_status` is 0|1, and
+ * placement drops dm_tips when it is 0 even though the get-Tax preview
+ * would still add the tip.
  */
 export type AppConfig = {
   offline_payment_status: number;
+  digital_payment: boolean;
+  dm_tips_status: number;
 };
 
 type ConfigResponse = {
   offline_payment_status?: number | string;
+  digital_payment?: boolean | number | string;
+  dm_tips_status?: number | string;
 };
 
 export type ConfigResult =
@@ -35,6 +44,19 @@ export function clearConfigCache(): void {
   cache = null;
 }
 
+function isOn(v: unknown): boolean {
+  return v === true || v === 1 || v === "1" || v === "true";
+}
+
+/** Exported for tests: the switches arrive as booleans, ints or strings. */
+export function toAppConfig(data: ConfigResponse): AppConfig {
+  return {
+    offline_payment_status: Number(data.offline_payment_status ?? 0),
+    digital_payment: isOn(data.digital_payment),
+    dm_tips_status: Number(data.dm_tips_status ?? 0),
+  };
+}
+
 export async function fetchConfig(): Promise<ConfigResult> {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) {
     return { ok: true, config: cache.config };
@@ -43,9 +65,7 @@ export async function fetchConfig(): Promise<ConfigResult> {
   const res = await api<ConfigResponse>("/api/v1/config");
 
   if (res.ok) {
-    const config: AppConfig = {
-      offline_payment_status: Number(res.data.offline_payment_status ?? 0),
-    };
+    const config = toAppConfig(res.data);
     cache = { at: Date.now(), config };
     return { ok: true, config };
   }
