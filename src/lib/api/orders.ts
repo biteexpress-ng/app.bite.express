@@ -64,6 +64,28 @@ export type OrderSummary = {
   additional_charge?: number;
   extra_packaging_amount?: number;
   dm_tips?: number;
+  /** "delivery", "take_away" or "parcel". */
+  order_type?: string | null;
+  /** Parcel orders only. For a parcel, delivery_address above is the
+   *  SENDER (pickup) and this is the receiver (drop-off). */
+  receiver_details?: OrderReceiver | null;
+  /** Parcel orders only; eager-loaded by track, list and running-orders. */
+  parcel_category?: {
+    id?: number;
+    name?: string | null;
+    image_full_url?: string | null;
+  } | null;
+  delivery_instruction?: string | null;
+};
+
+/** receiver_details as the Order model casts it back from JSON. */
+export type OrderReceiver = {
+  address?: string;
+  latitude?: string | number;
+  longitude?: string | number;
+  contact_person_name?: string;
+  contact_person_number?: string;
+  contact_person_email?: string | null;
 };
 
 export type OrderStatus =
@@ -494,6 +516,124 @@ export async function payOnDelivery(
     { method: "PUT", body: { order_id: orderId } },
   );
   if (res.ok) return { ok: true };
+  if ("skipped" in res) {
+    return { ok: false, code: null, message: "Backend not configured." };
+  }
+  const code = res.errors ? (Object.keys(res.errors)[0] ?? null) : null;
+  return { ok: false, code, message: res.message };
+}
+
+/* -------------------------------------------------------------- */
+/* Parcel orders                                                   */
+/* -------------------------------------------------------------- */
+
+/**
+ * receiver_details as PlaceNewOrder reads it: the keys of the Flutter
+ * app's AddressModel, sent as a JSON string. getZoneAndStore() checks
+ * that zone_id contains latitude/longitude (error code "receiverZone").
+ */
+export type ReceiverDetails = {
+  address: string;
+  latitude: string;
+  longitude: string;
+  zone_id: number;
+  contact_person_name: string;
+  contact_person_number: string;
+  contact_person_email: string;
+  road: string;
+  house: string;
+  floor: string;
+  address_type: string;
+  additional_address: string;
+};
+
+export type PlaceParcelOrderInput = {
+  moduleId: number;
+  /** Zones containing the pickup point. PlaceNewOrder picks the one
+   *  that offers the parcel module (error code "zone" if none). */
+  zoneIds: number[];
+  /** Where the rider collects. Sent as the order's address. */
+  pickup: { text: string; lat: number; lng: number; addressType?: string };
+  /** The pickup contact. Stored in delivery_address. */
+  sender: {
+    name: string;
+    phone: string;
+    email: string | null;
+    house: string;
+    floor: string;
+    road: string;
+  };
+  receiverDetails: ReceiverDetails;
+  /** Kilometres, pickup to drop-off. The preview must get the same number. */
+  distance: number;
+  parcelCategoryId: number;
+  /** No cash on delivery: every order is paid before it is attended to. */
+  paymentMethod: "digital_payment" | "wallet" | "offline_payment";
+  dmTips: number;
+  deliveryInstruction: string;
+};
+
+/**
+ * The body for POST /order/place with order_type=parcel. The get-Tax
+ * preview is sent this exact body too (fetchParcelQuote), so the two
+ * cannot price different inputs. No cart, no store_id, no is_buy_now:
+ * the parcel branch of PlaceNewOrder reads none of them. The sender
+ * always pays, up front.
+ */
+export function parcelOrderBody(
+  input: PlaceParcelOrderInput,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    order_type: "parcel",
+    payment_method: input.paymentMethod,
+    parcel_category_id: input.parcelCategoryId,
+    charge_payer: "sender",
+    receiver_details: JSON.stringify(input.receiverDetails),
+    distance: input.distance,
+    address: input.pickup.text,
+    address_type: input.pickup.addressType ?? "Delivery",
+    latitude: String(input.pickup.lat),
+    longitude: String(input.pickup.lng),
+    contact_person_name: input.sender.name,
+    contact_person_number: input.sender.phone,
+    house: input.sender.house,
+    floor: input.sender.floor,
+    road: input.sender.road,
+    dm_tips: input.dmTips,
+    delivery_instruction: input.deliveryInstruction,
+  };
+  if (input.sender.email) body.contact_person_email = input.sender.email;
+  return body;
+}
+
+export type PlaceParcelOrderResult =
+  | { ok: true; orderId: number; amount: number }
+  /** `code` is the backend's error code: "zone", "receiverZone", or
+   *  "order_amount" on a 203 refusal (the wallet cannot cover the total). */
+  | { ok: false; code: string | null; message: string };
+
+export async function placeParcelOrder(
+  input: PlaceParcelOrderInput,
+): Promise<PlaceParcelOrderResult> {
+  const res = await api<PlaceOrderResponse>("/api/v1/customer/order/place", {
+    method: "POST",
+    body: parcelOrderBody(input),
+    zoneId: input.zoneIds,
+    moduleId: input.moduleId,
+    latitude: input.pickup.lat,
+    longitude: input.pickup.lng,
+  });
+
+  if (res.ok) {
+    if (typeof res.data.order_id === "number") {
+      return {
+        ok: true,
+        orderId: res.data.order_id,
+        amount: Number(res.data.total_ammount ?? 0),
+      };
+    }
+    return { ok: false, code: null, message: "Order placed but no id returned." };
+  }
   if ("skipped" in res) {
     return { ok: false, code: null, message: "Backend not configured." };
   }

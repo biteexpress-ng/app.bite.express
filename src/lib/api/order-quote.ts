@@ -2,7 +2,11 @@
 
 import { api } from "@/lib/api-client";
 import type { CartLine } from "@/lib/cart-store";
-import { toWireCart } from "@/lib/api/orders";
+import {
+  parcelOrderBody,
+  toWireCart,
+  type PlaceParcelOrderInput,
+} from "@/lib/api/orders";
 
 /**
  * POST /api/v1/customer/order/get-Tax  (OrderController@getTaxFromCart)
@@ -134,4 +138,46 @@ export function parseQuote(data: GetTaxResponse): OrderQuote {
     dmTips: num(inputs.dm_tips),
     total: num(data.order_amount),
   };
+}
+
+/**
+ * A parcel preview is only trusted when it carries the fee. A backend
+ * without the parcel preview fix returns delivery_charge 0 with no
+ * free-delivery reason and a total that leaves the fee out; showing
+ * that would print "Free" delivery and a total below the real charge.
+ */
+export function parcelQuoteUsable(q: OrderQuote): boolean {
+  return q.total > 0 && (q.deliveryCharge > 0 || q.freeDeliveryBy !== null);
+}
+
+/**
+ * The parcel preview. Sent the exact body placeParcelOrder() sends, with
+ * the same zone and module headers, so the backend prices the fee on the
+ * same distance and category, adds the pickup zone's surge, and refuses
+ * a pickup outside every parcel zone (code "zone") just as placement would.
+ */
+export async function fetchParcelQuote(
+  input: PlaceParcelOrderInput,
+): Promise<OrderQuoteResult> {
+  const res = await api<GetTaxResponse>("/api/v1/customer/order/get-Tax", {
+    method: "POST",
+    body: parcelOrderBody(input),
+    zoneId: input.zoneIds,
+    moduleId: input.moduleId,
+    latitude: input.pickup.lat,
+    longitude: input.pickup.lng,
+  });
+
+  if (res.ok) {
+    const quote = parseQuote(res.data);
+    if (!parcelQuoteUsable(quote)) {
+      return {
+        ok: false,
+        message: "We couldn't price this delivery just now. Try again in a moment.",
+      };
+    }
+    return { ok: true, quote };
+  }
+  if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  return { ok: false, message: res.message };
 }
