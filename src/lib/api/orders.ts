@@ -44,6 +44,10 @@ export type OrderSummary = {
         l_name?: string;
         phone?: string;
         image_full_url?: string | null;
+        /** From the rider's last location ping. Strings on the wire. */
+        lat?: number | string | null;
+        lng?: number | string | null;
+        location_updated_at?: string | null;
       }>
     | null;
   /** ISO datetime the quote stops being payable, or null. Present and
@@ -173,6 +177,8 @@ export type OrderTimeline = {
   order_id: number;
   event: string;
   status?: string;
+  title?: string | null;
+  actual_at?: string | null;
   created_at: string;
 };
 
