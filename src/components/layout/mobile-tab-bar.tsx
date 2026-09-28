@@ -33,6 +33,7 @@ export function MobileTabBar() {
   const location = useLocation((s) => s.location);
   const hydrateLocation = useLocation((s) => s.hydrate);
   const hydrateCart = useCart((s) => s.hydrate);
+  const cartHydrated = useCart((s) => s.hydrated);
   const cartCount = useCartCount();
   const runningOrders = useRunningOrdersCount();
 
@@ -58,7 +59,7 @@ export function MobileTabBar() {
       href: "/cart",
       icon: ShoppingBag,
       badge:
-        cartCount > 0 ? (
+        cartHydrated && cartCount > 0 ? (
           <CountBadge
             count={cartCount}
             label={`${cartCount} ${cartCount === 1 ? "item" : "items"} in cart`}

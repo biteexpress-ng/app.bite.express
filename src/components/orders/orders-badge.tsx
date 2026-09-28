@@ -1,57 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useAuth } from "@/lib/auth-store";
-import { fetchRunningOrders } from "@/lib/api/orders";
+import { useRunningOrdersCount } from "@/lib/running-orders-store";
 
 /**
- * Live count of the customer's running orders (i.e. orders whose
- * status is not yet delivered/canceled/refunded/etc).
+ * Live count of the customer's running orders (i.e. orders whose status
+ * is not yet delivered/canceled/refunded/etc). Returns 0 for guests.
  *
- * Refreshes:
- *   - on first sign-in (token transition)
- *   - every 60s while signed in (auth-aware polling — stops when
- *     signed out)
- *   - when the tab regains focus, so coming back from a banking app
- *     mid-DVA-transfer shows the new "Confirmed" order without a
- *     hard refresh.
- *
- * Returns 0 for guests.
+ * Re-exported here so existing call sites don't need to change their
+ * import path. The polling itself (60s interval, focus refetch, one
+ * fetch shared across every mounted consumer) lives in
+ * lib/running-orders-store.ts.
  */
-export function useRunningOrdersCount(): number {
-  const token = useAuth((s) => s.token);
-  const [count, setCount] = useState<number>(0);
-
-  useEffect(() => {
-    if (!token) {
-      setCount(0);
-      return;
-    }
-
-    let cancelled = false;
-    async function refresh() {
-      const res = await fetchRunningOrders(1, 1);
-      if (cancelled) return;
-      if (res.ok) setCount(res.data.total_size);
-    }
-
-    refresh();
-    const interval = setInterval(refresh, 60_000);
-
-    function onFocus() {
-      refresh();
-    }
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [token]);
-
-  return count;
-}
+export { useRunningOrdersCount };
 
 /** Floating pill badge — sits on top of an icon. */
 export function OrdersBadge() {
