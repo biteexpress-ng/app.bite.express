@@ -35,6 +35,7 @@ import { usePendingPayment } from "@/lib/price-check/use-pending-payment";
 import { onOrderPush } from "@/lib/push-events";
 import { PushOptInCard } from "@/components/notifications/push-optin-card";
 import {
+  isStaleFix,
   pollIntervalMs,
   riderDistanceLabel,
   riderFixFromTrack,
@@ -272,8 +273,12 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   );
   const pickup = parseLatLng(order.store?.latitude, order.store?.longitude);
   const riderFix = riderFixFromTrack(rider);
+  // A stale fix says where the rider was, not where they are. The poll
+  // re-renders this every 10s while picked up, which keeps the check current.
   const distanceLabel =
-    order.order_status === "picked_up" ? riderDistanceLabel(riderFix, destination) : null;
+    order.order_status === "picked_up" && !isStaleFix(riderFix, new Date().getTime())
+      ? riderDistanceLabel(riderFix, destination)
+      : null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
