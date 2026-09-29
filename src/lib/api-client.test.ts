@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRefusalBody, parseErrorBody } from "@/lib/api-client";
+import { isRefusalBody, networkErrorMessage, parseErrorBody } from "@/lib/api-client";
 
 describe("isRefusalBody", () => {
   it("treats a 203 carrying a Laravel errors array as a refusal", () => {
@@ -80,5 +80,33 @@ describe("parseErrorBody", () => {
 
   it("returns an empty message when the body carries nothing usable", () => {
     expect(parseErrorBody({}).message).toBe("");
+  });
+});
+
+describe("networkErrorMessage", () => {
+  it("turns AbortSignal.timeout's TimeoutError into words a customer can act on", () => {
+    const err = new DOMException("signal timed out", "TimeoutError");
+    expect(networkErrorMessage(err)).toBe(
+      "The server took too long to answer. Check your connection and try again.",
+    );
+  });
+
+  it("covers the fetch failures each browser words differently", () => {
+    for (const text of [
+      "Failed to fetch",
+      "Load failed",
+      "NetworkError when attempting to fetch resource.",
+    ]) {
+      expect(networkErrorMessage(new TypeError(text))).toBe(
+        "We couldn't reach BiteExpress. Check your connection and try again.",
+      );
+    }
+  });
+
+  it("never passes a raw exception message through", () => {
+    expect(networkErrorMessage(new Error("Unexpected token < in JSON"))).toBe(
+      "Something went wrong. Please try again.",
+    );
+    expect(networkErrorMessage("boom")).toBe("Something went wrong. Please try again.");
   });
 });
