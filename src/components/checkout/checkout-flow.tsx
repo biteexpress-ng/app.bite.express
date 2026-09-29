@@ -16,6 +16,7 @@ import { fetchStoreDetail } from "@/lib/api/store-detail";
 import { fetchProfile } from "@/lib/api/auth";
 import { checkZone } from "@/lib/api/zones";
 import { defaultSettleDeps, settleOrder } from "@/lib/checkout/settle-order";
+import { recheckPrice } from "@/lib/checkout/price-recheck";
 import { afterSettle } from "@/lib/parcel/parcel-payment";
 import { distanceKm } from "@/lib/geo";
 import { toast } from "@/lib/toast";
@@ -442,6 +443,34 @@ export function CheckoutFlow() {
 
       clear();
       router.replace(`/orders/${req.orderId}`);
+      return;
+    }
+
+    // Priced again with the zones and distance placement is about to
+    // send. A surge that opened while the customer sat on this page must
+    // show up on screen before it is charged.
+    const recheck = recheckPrice(
+      quote.kind === "ready" ? quote.quote.total : null,
+      await fetchOrderQuote({
+        storeId: cartStoreId!,
+        moduleId: phase.moduleId,
+        zoneIds: eligibleZoneIds,
+        lines,
+        lat: address.lat,
+        lng: address.lng,
+        distance: dist,
+        dmTips: tip,
+      }),
+    );
+    if (recheck.kind !== "place") {
+      setPhase(phase);
+      if (recheck.kind === "changed") {
+        quoteSeq.current++;
+        setQuote({ kind: "ready", quote: recheck.quote });
+        toast.warn(recheck.message);
+      } else {
+        toast.error(recheck.message);
+      }
       return;
     }
 

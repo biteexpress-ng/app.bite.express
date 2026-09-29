@@ -24,6 +24,7 @@ import {
   type OfflinePaymentMethod,
 } from "@/lib/offline-payment-rules";
 import { defaultSettleDeps, settleOrder } from "@/lib/checkout/settle-order";
+import { recheckPrice } from "@/lib/checkout/price-recheck";
 import { normalizePhone } from "@/lib/phone";
 import { toast } from "@/lib/toast";
 import {
@@ -396,6 +397,25 @@ export function SendParcelFlow() {
     if (!orderInput || blocker !== null || placing) return;
 
     setPlacing(true);
+
+    // Priced again on the exact body placement sends. A surge that opened
+    // while the sender sat on the review step must show up on screen
+    // before it is charged.
+    const recheck = recheckPrice(
+      quoteView.kind === "ready" ? quoteView.quote.total : null,
+      await fetchParcelQuote(orderInput),
+    );
+    if (recheck.kind !== "place") {
+      setPlacing(false);
+      if (recheck.kind === "changed") {
+        if (quoteKey) setQuote({ key: quoteKey, value: { ok: true, quote: recheck.quote } });
+        toast.warn(recheck.message);
+      } else {
+        toast.error(recheck.message);
+      }
+      return;
+    }
+
     const res = await placeParcelOrder(orderInput);
     if (!res.ok && res.code === "unknown_outcome") {
       // The order may exist, and a wallet order is already paid, so Place
