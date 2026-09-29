@@ -8,7 +8,8 @@ import { getAuthToken } from "./auth";
  *   - Almost every request runs CLIENT-SIDE (after auth hydrates from
  *     localStorage), so we read the bearer token per-call.
  *   - Sends the canonical 6amMart headers the backend recognises
- *     (X-software-id, X-localization, origin, Accept).
+ *     (X-software-id, X-localization, origin, Accept), plus X-Client
+ *     so orders placed here are tagged as web-app orders.
  *   - Returns a discriminated `ApiResult` union — callers never have
  *     to try/catch fetch themselves.
  *
@@ -181,6 +182,9 @@ export async function api<T>(
   const headers: Record<string, string> = {
     "X-software-id": SOFTWARE_ID,
     "X-localization": opts.locale ?? "en",
+    // The backend stamps orders placed with this header as source='web',
+    // which is what puts the web-app icon on the admin order list.
+    "X-Client": "web-app",
     origin: publicOrigin(),
     Accept: "application/json",
     ...opts.headers,
