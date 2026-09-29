@@ -62,6 +62,16 @@ export function orderHeading(
   return o.store?.name ?? "Your order";
 }
 
+export function orderListTitle(
+  o: Pick<OrderSummary, "order_type" | "receiver_details" | "store">,
+): string {
+  if (isParcelOrder(o)) {
+    const name = receiverName(o);
+    return name ? `Parcel to ${name}` : "Parcel";
+  }
+  return o.store?.name ?? "Unknown shop";
+}
+
 /** Where the rider map points: the drop-off for a parcel, the customer for a shop order. */
 export function mapPoints(
   o: Pick<OrderSummary, "order_type" | "receiver_details" | "delivery_address" | "store">,

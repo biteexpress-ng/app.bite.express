@@ -7,6 +7,7 @@ import {
   milestoneIndex,
   milestonesFor,
   orderHeading,
+  orderListTitle,
   receiverName,
   receiverOf,
   toLatLng,
@@ -151,6 +152,18 @@ describe("orderHeading", () => {
   it("falls back to 'Your parcel' when receiver_details is malformed or non-object JSON", () => {
     expect(orderHeading(parcelMalformedReceiver)).toBe("Your parcel");
     expect(orderHeading(parcelNonObjectReceiver)).toBe("Your parcel");
+  });
+});
+
+describe("orderListTitle", () => {
+  it("names the receiver for a parcel instead of an unknown shop", () => {
+    expect(orderListTitle(parcel)).toBe("Parcel to Bola Ade");
+    expect(orderListTitle(order({ order_type: "parcel", receiver_details: null }))).toBe("Parcel");
+  });
+
+  it("keeps the shop name, or the old fallback, for shop orders", () => {
+    expect(orderListTitle(food)).toBe("Mama Put");
+    expect(orderListTitle(order({ store: null }))).toBe("Unknown shop");
   });
 });
 
