@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OrderQuote } from "@/lib/api/order-quote";
 import {
+  afterSettle,
   allowedMethods,
   effectivePayment,
   parcelPlaceErrorMessage,
@@ -141,6 +142,30 @@ describe("walletShortfall", () => {
     expect(walletShortfall(900, 600)).toBe(300);
     expect(walletShortfall(900, 1200)).toBe(0);
     expect(walletShortfall(900, null)).toBe(0);
+  });
+});
+
+describe("afterSettle", () => {
+  it("never leaves a placed wallet parcel on the form, where Place order would debit again", () => {
+    for (const tone of ["warn", "error"] as const) {
+      expect(afterSettle("wallet", { kind: "stay", tone, message: "Network down" }, 100231)).toEqual({
+        kind: "navigate",
+        href: "/orders/100231",
+        error: "We couldn't confirm the wallet payment for order #100231. Check the order before paying again.",
+      });
+    }
+  });
+
+  it("keeps a cancelled or failed Paystack popup on the form", () => {
+    const cancelled = { kind: "stay" as const, tone: "warn" as const, message: "Payment cancelled." };
+    expect(afterSettle("digital_payment", cancelled, 100231)).toBe(cancelled);
+  });
+
+  it("passes a navigate outcome through for every method", () => {
+    const done = { kind: "navigate" as const, href: "/orders/100231" };
+    expect(afterSettle("wallet", done, 100231)).toBe(done);
+    expect(afterSettle("digital_payment", done, 100231)).toBe(done);
+    expect(afterSettle("offline_payment", done, 100231)).toBe(done);
   });
 });
 

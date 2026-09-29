@@ -1,5 +1,6 @@
 import type { OrderQuote } from "@/lib/api/order-quote";
 import type { ZoneData } from "@/lib/api/zones";
+import type { SettleOutcome } from "@/lib/checkout/settle-order";
 
 /**
  * Pure rules for how a parcel is paid and when it can be placed. No
@@ -109,6 +110,28 @@ export function placeBlocker(a: {
     }
   }
   return null;
+}
+
+/**
+ * What /send does once settleOrder answers. Placement debits the wallet
+ * and the wallet endpoint answers 200 for an order already paid, so a
+ * wallet "stay" can only be a transport failure after payment. Leaving
+ * the form open there would invite a second debit, so the customer goes
+ * to the order instead. A cancelled or failed Paystack popup still stays.
+ */
+export function afterSettle(
+  method: ParcelPaymentMethod,
+  outcome: SettleOutcome,
+  orderId: number,
+): SettleOutcome {
+  if (method === "wallet" && outcome.kind === "stay") {
+    return {
+      kind: "navigate",
+      href: `/orders/${orderId}`,
+      error: `We couldn't confirm the wallet payment for order #${orderId}. Check the order before paying again.`,
+    };
+  }
+  return outcome;
 }
 
 /**

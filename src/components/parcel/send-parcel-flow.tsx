@@ -43,6 +43,7 @@ import {
   type StepNumber,
 } from "@/lib/parcel/parcel-form";
 import {
+  afterSettle,
   allowedMethods,
   effectivePayment,
   parcelPlaceErrorMessage,
@@ -409,7 +410,7 @@ export function SendParcelFlow() {
       return;
     }
 
-    const outcome = await settleOrder(
+    const settled = await settleOrder(
       {
         orderId: res.orderId,
         amount: res.amount,
@@ -420,6 +421,8 @@ export function SendParcelFlow() {
       },
       defaultSettleDeps,
     );
+    // A wallet order was paid at placement: never back to Place order.
+    const outcome = afterSettle(orderInput.paymentMethod, settled, res.orderId);
     if (outcome.kind === "navigate") {
       if (outcome.error) toast.error(outcome.error);
       router.replace(outcome.href);
