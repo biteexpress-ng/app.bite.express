@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { Clock, Loader2, Package, ShoppingBag } from "lucide-react";
+import { Clock, Loader2, Package, RotateCw, ShoppingBag } from "lucide-react";
 import {
   fetchOrderHistory,
   fetchRunningOrders,
@@ -38,6 +38,7 @@ export function OrdersView() {
   const tab: Tab = search.get("tab") === "history" ? "history" : "running";
 
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +59,7 @@ export function OrdersView() {
     return () => {
       cancelled = true;
     };
-  }, [tab]);
+  }, [tab, attempt]);
 
   function setTab(next: Tab) {
     const params = new URLSearchParams(search.toString());
@@ -74,8 +75,21 @@ export function OrdersView() {
       {state.kind === "loading" && <CenterSpinner label="Loading orders…" />}
 
       {state.kind === "error" && (
-        <div className="rounded-2xl border border-error/30 bg-error/5 p-4 text-sm text-error">
-          {state.message}
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-error/30 bg-error/5 p-4 text-sm text-error"
+        >
+          <p className="min-w-0 flex-1">
+            We couldn&apos;t load your orders. {state.message}
+          </p>
+          <button
+            type="button"
+            onClick={() => setAttempt((n) => n + 1)}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-pill border border-ink-200 bg-white px-4 text-sm font-medium text-ink-900 transition-colors hover:border-brand-red/30 hover:text-brand-red"
+          >
+            <RotateCw size={14} />
+            Try again
+          </button>
         </div>
       )}
 

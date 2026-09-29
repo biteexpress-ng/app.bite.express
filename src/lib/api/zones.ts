@@ -24,7 +24,6 @@ import { api } from "@/lib/api-client";
 export type ZoneData = {
   id: number;
   status: number;
-  cash_on_delivery: number;
   digital_payment: number;
   offline_payment: number;
   /** Loaded via `with('modules')` on the backend. */

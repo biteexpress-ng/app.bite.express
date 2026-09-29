@@ -142,6 +142,27 @@ export function isRefusalBody(status: number, body: ErrorBody): boolean {
   return true;
 }
 
+/**
+ * What a customer reads when no HTTP answer arrived at all. The raw
+ * exception text ("signal timed out", "Failed to fetch", "Load failed")
+ * differs per browser and tells them nothing, so it never reaches the UI.
+ * Callers that need to know an answer is missing check `status === 0`,
+ * not this text.
+ */
+export function networkErrorMessage(err: unknown): string {
+  const name = err instanceof Error || err instanceof DOMException ? err.name : "";
+  // Older Safari aborts AbortSignal.timeout() with AbortError instead.
+  if (name === "TimeoutError" || name === "AbortError") {
+    return "The server took too long to answer. Check your connection and try again.";
+  }
+  // fetch() rejects with a TypeError when the network is down, DNS
+  // fails, or CORS blocks the response.
+  if (err instanceof TypeError) {
+    return "We couldn't reach BiteExpress. Check your connection and try again.";
+  }
+  return "Something went wrong. Please try again.";
+}
+
 export async function api<T>(
   path: string,
   opts: RequestOpts = {},
@@ -242,7 +263,6 @@ export async function api<T>(
 
     return { ok: true, data: raw as T };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, status: 0, message };
+    return { ok: false, status: 0, message: networkErrorMessage(err) };
   }
 }

@@ -15,7 +15,10 @@ import { toWireCart, type PlaceOrderInput } from "@/lib/api/orders";
 
 export type PriceRequestResult =
   | { ok: true; orderId: number; requestedAmount: number }
-  | { ok: false; message: string };
+  /** `code` is "unknown_outcome" when no answer arrived (timeout or
+   *  dropped connection): the request may have landed and notified the
+   *  store, so the caller must not offer to send it again blind. */
+  | { ok: false; code?: "unknown_outcome"; message: string };
 
 type PriceRequestResponse = {
   message?: string;
@@ -63,6 +66,9 @@ export async function sendPriceRequest(
       moduleId: input.moduleId,
       latitude: input.lat,
       longitude: input.lng,
+      // Same budget as placement: the backend builds the whole order
+      // before answering, and a slow answer is not a failed one.
+      timeoutMs: 45_000,
     },
   );
 
@@ -77,6 +83,9 @@ export async function sendPriceRequest(
     return { ok: false, message: "Request sent but no order id came back." };
   }
   if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  if (res.status === 0) {
+    return { ok: false, code: "unknown_outcome", message: res.message };
+  }
   return { ok: false, message: res.message };
 }
 

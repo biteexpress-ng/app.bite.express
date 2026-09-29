@@ -71,7 +71,7 @@ describe("pendingPaymentResolved", () => {
     expect(pendingPaymentResolved(read("price_confirmed", "paid"))).toBe(true);
   });
 
-  it("counts settlement past price_confirmed, which is how cash on delivery ends", () => {
+  it("counts an order the server has moved past price_confirmed as settled", () => {
     expect(pendingPaymentResolved(read("pending", "unpaid"))).toBe(true);
   });
 
