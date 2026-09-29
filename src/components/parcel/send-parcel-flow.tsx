@@ -332,7 +332,7 @@ export function SendParcelFlow() {
           dropoff,
           distanceKm: orderInput.distance,
           tip: effectiveTip,
-        })}#${retryNonce}`
+        })}|${orderInput.moduleId}|${orderInput.zoneIds.join(",")}#${retryNonce}`
       : null;
 
   useEffect(() => {
