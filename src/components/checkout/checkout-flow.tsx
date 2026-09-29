@@ -424,6 +424,16 @@ export function CheckoutFlow() {
         itemNotes: buildItemNotes(lines),
       });
 
+      if (!req.ok && req.code === "unknown_outcome") {
+        // The request may have reached the store. Nothing is charged for
+        // a price request, so the cart is kept in case it never arrived,
+        // but the orders list is where the customer looks first.
+        toast.warn(
+          "We couldn't confirm whether your price request was sent. Check your orders before sending it again.",
+        );
+        router.replace("/orders");
+        return;
+      }
       if (!req.ok) {
         setPhase(phase);
         toast.error(req.message);
