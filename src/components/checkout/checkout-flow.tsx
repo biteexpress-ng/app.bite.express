@@ -459,8 +459,11 @@ export function CheckoutFlow() {
 
     if (!res.ok && res.code === "unknown_outcome") {
       // The order may exist, and a wallet order is already paid, so Place
-      // order stays off: the orders list is the only safe next step. The
+      // order stays off: the orders list is the only safe next step. A
+      // wallet cart is cleared so a second placement cannot debit again;
+      // Pay Online and Pay Offline charge nothing at placement, so their
       // cart is kept in case the order never reached the backend.
+      if (payment === "wallet") clear();
       toast.warn("We couldn't confirm whether your order was placed. Check your orders before trying again.");
       router.replace("/orders");
       return;
