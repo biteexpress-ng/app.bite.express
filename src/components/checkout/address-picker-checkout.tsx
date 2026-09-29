@@ -183,7 +183,8 @@ function toCheckoutFromSaved(a: SavedAddress): CheckoutAddress {
   };
 }
 
-function toCheckoutFromPicked(p: DeliveryLocation): CheckoutAddress {
+/** Exported for /send, whose pickup defaults to the home-page location. */
+export function toCheckoutFromPicked(p: DeliveryLocation): CheckoutAddress {
   return {
     source: "picked",
     text: p.formattedAddress,
