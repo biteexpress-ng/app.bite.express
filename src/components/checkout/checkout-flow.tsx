@@ -456,6 +456,14 @@ export function CheckoutFlow() {
       dmTips: tip,
     });
 
+    if (!res.ok && res.code === "unknown_outcome") {
+      // The order may exist, and a wallet order is already paid, so Place
+      // order stays off: the orders list is the only safe next step. The
+      // cart is kept in case the order never reached the backend.
+      toast.warn("We couldn't confirm whether your order was placed. Check your orders before trying again.");
+      router.replace("/orders");
+      return;
+    }
     if (!res.ok) {
       setPhase(phase);
       toast.error(res.message);

@@ -337,7 +337,10 @@ type PlaceOrderResponse = {
 
 export type PlaceOrderResult =
   | { ok: true; orderId: number; amount: number }
-  | { ok: false; message: string };
+  /** `code` is "unknown_outcome" when no answer arrived (timeout or
+   *  dropped connection): the order may exist, and a wallet order is
+   *  already paid. Every other failure carries no code. */
+  | { ok: false; code?: "unknown_outcome"; message: string };
 
 function toWireVariation(
   selections: VariationSelection[],
@@ -409,6 +412,7 @@ export async function placeOrder(
     moduleId: input.moduleId,
     latitude: input.lat,
     longitude: input.lng,
+    timeoutMs: 45_000,
   });
 
   if (res.ok) {
@@ -422,6 +426,9 @@ export async function placeOrder(
     return { ok: false, message: "Order placed but no id returned." };
   }
   if ("skipped" in res) return { ok: false, message: "Backend not configured." };
+  if (res.status === 0) {
+    return { ok: false, code: "unknown_outcome", message: res.message };
+  }
   return { ok: false, message: res.message };
 }
 
