@@ -67,8 +67,12 @@ export type OrderSummary = {
   /** "delivery", "take_away" or "parcel". */
   order_type?: string | null;
   /** Parcel orders only. For a parcel, delivery_address above is the
-   *  SENDER (pickup) and this is the receiver (drop-off). */
-  receiver_details?: OrderReceiver | null;
+   *  SENDER (pickup) and this is the receiver (drop-off). The column is
+   *  stored as a JSON string; track/list/running-orders cast it back to
+   *  an object, but a raw string is possible from another endpoint or a
+   *  future change. Read it with parcel-order.ts's receiverOf(), never
+   *  directly. */
+  receiver_details?: OrderReceiver | string | null;
   /** Parcel orders only; eager-loaded by track, list and running-orders. */
   parcel_category?: {
     id?: number;

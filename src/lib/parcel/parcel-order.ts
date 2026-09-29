@@ -1,4 +1,4 @@
-import type { OrderStatus, OrderSummary } from "@/lib/api/orders";
+import type { OrderReceiver, OrderStatus, OrderSummary } from "@/lib/api/orders";
 import type { MilestoneStatus } from "@/lib/tracking";
 
 /**
@@ -26,8 +26,29 @@ export function isParcelOrder(o: Pick<OrderSummary, "order_type">): boolean {
   return o.order_type === "parcel";
 }
 
+/**
+ * receiver_details as the Order model stores it: a JSON string on the
+ * column, but the track/list/running-orders endpoints cast it back to an
+ * object before it reaches us. Read it here rather than at each call
+ * site so a raw string (or a malformed one) never crashes a caller and
+ * never silently reads undefined off a string.
+ */
+export function receiverOf(o: Pick<OrderSummary, "receiver_details">): OrderReceiver | null {
+  const raw = o.receiver_details;
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "string") return raw;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as OrderReceiver)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function receiverName(o: Pick<OrderSummary, "receiver_details">): string | null {
-  const name = o.receiver_details?.contact_person_name?.trim();
+  const name = receiverOf(o)?.contact_person_name?.trim();
   return name ? name : null;
 }
 
@@ -46,8 +67,9 @@ export function mapPoints(
   o: Pick<OrderSummary, "order_type" | "receiver_details" | "delivery_address" | "store">,
 ): { destination: LatLng | null; pickup: LatLng | null } {
   if (isParcelOrder(o)) {
+    const receiver = receiverOf(o);
     return {
-      destination: toLatLng(o.receiver_details?.latitude, o.receiver_details?.longitude),
+      destination: toLatLng(receiver?.latitude, receiver?.longitude),
       pickup: toLatLng(o.delivery_address?.latitude, o.delivery_address?.longitude),
     };
   }
@@ -89,11 +111,11 @@ export function addressCards(
       phone: from.contact_person_number || null,
     });
   }
-  const to = o.receiver_details;
-  if (to) {
+  const to = receiverOf(o);
+  if (to?.address) {
     cards.push({
       label: "Drop-off",
-      address: to.address ?? "",
+      address: to.address,
       name: to.contact_person_name || null,
       phone: to.contact_person_number || null,
     });

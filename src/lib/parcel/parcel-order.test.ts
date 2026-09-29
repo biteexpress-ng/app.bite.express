@@ -8,6 +8,7 @@ import {
   milestonesFor,
   orderHeading,
   receiverName,
+  receiverOf,
   toLatLng,
 } from "./parcel-order";
 
@@ -49,6 +50,37 @@ const food = order({
   delivery_address: sender,
 });
 
+const receiverObj = {
+  address: "5 Awolowo Road, Ikoyi",
+  latitude: "6.4541",
+  longitude: "3.4218",
+  contact_person_name: "Bola Ade",
+  contact_person_number: "+2348098765432",
+};
+
+/** Same receiver, but as the JSON string the receiver_details column
+ *  actually stores (some endpoint could return it unparsed). */
+const parcelJsonReceiver = order({
+  order_type: "parcel",
+  store: null,
+  delivery_address: sender,
+  receiver_details: JSON.stringify(receiverObj),
+});
+
+const parcelMalformedReceiver = order({
+  order_type: "parcel",
+  store: null,
+  delivery_address: sender,
+  receiver_details: "{not valid json",
+});
+
+const parcelNonObjectReceiver = order({
+  order_type: "parcel",
+  store: null,
+  delivery_address: sender,
+  receiver_details: "[1,2,3]",
+});
+
 describe("toLatLng", () => {
   it("reads string coordinates and rejects missing or zero ones", () => {
     expect(toLatLng("6.4541", "3.4218")).toEqual({ lat: 6.4541, lng: 3.4218 });
@@ -72,6 +104,33 @@ describe("isParcelOrder and receiverName", () => {
     expect(receiverName(order({ receiver_details: { contact_person_name: "  " } }))).toBeNull();
     expect(receiverName(food)).toBeNull();
   });
+
+  it("reads the receiver's name from a JSON-string receiver_details the same as from the object", () => {
+    expect(receiverName(parcelJsonReceiver)).toBe("Bola Ade");
+  });
+
+  it("reads no name from malformed or non-object JSON, without crashing", () => {
+    expect(receiverName(parcelMalformedReceiver)).toBeNull();
+    expect(receiverName(parcelNonObjectReceiver)).toBeNull();
+  });
+});
+
+describe("receiverOf", () => {
+  it("returns the object as is", () => {
+    expect(receiverOf(parcel)).toEqual(receiverObj);
+  });
+
+  it("parses a JSON-string receiver_details into the same object", () => {
+    expect(receiverOf(parcelJsonReceiver)).toEqual(receiverObj);
+  });
+
+  it("returns null for null, undefined, malformed JSON, or a non-object JSON value", () => {
+    expect(receiverOf(order({ receiver_details: null }))).toBeNull();
+    expect(receiverOf(order({}))).toBeNull();
+    expect(receiverOf(parcelMalformedReceiver)).toBeNull();
+    expect(receiverOf(parcelNonObjectReceiver)).toBeNull();
+    expect(receiverOf(order({ receiver_details: "42" }))).toBeNull();
+  });
 });
 
 describe("orderHeading", () => {
@@ -83,6 +142,15 @@ describe("orderHeading", () => {
   it("keeps the shop name for a shop order", () => {
     expect(orderHeading(food)).toBe("Mama Put");
     expect(orderHeading(order({ store: null }))).toBe("Your order");
+  });
+
+  it("names the receiver the same way from a JSON-string receiver_details", () => {
+    expect(orderHeading(parcelJsonReceiver)).toBe("Parcel to Bola Ade");
+  });
+
+  it("falls back to 'Your parcel' when receiver_details is malformed or non-object JSON", () => {
+    expect(orderHeading(parcelMalformedReceiver)).toBe("Your parcel");
+    expect(orderHeading(parcelNonObjectReceiver)).toBe("Your parcel");
   });
 });
 
@@ -100,6 +168,18 @@ describe("mapPoints", () => {
       pickup: { lat: 6.5, lng: 3.3 },
     });
   });
+
+  it("reads the same destination from a JSON-string receiver_details", () => {
+    expect(mapPoints(parcelJsonReceiver)).toEqual({
+      destination: { lat: 6.4541, lng: 3.4218 },
+      pickup: { lat: 6.6018, lng: 3.3515 },
+    });
+  });
+
+  it("has no destination when receiver_details is malformed or non-object JSON", () => {
+    expect(mapPoints(parcelMalformedReceiver).destination).toBeNull();
+    expect(mapPoints(parcelNonObjectReceiver).destination).toBeNull();
+  });
 });
 
 describe("addressCards", () => {
@@ -115,6 +195,22 @@ describe("addressCards", () => {
       { label: "Delivery", address: "12 Allen Avenue, Ikeja", name: "Ada Obi", phone: "+2348012345678" },
     ]);
     expect(addressCards(order({ delivery_address: null }))).toEqual([]);
+  });
+
+  it("labels the same Drop-off card from a JSON-string receiver_details", () => {
+    expect(addressCards(parcelJsonReceiver)).toEqual([
+      { label: "Pickup", address: "12 Allen Avenue, Ikeja", name: "Ada Obi", phone: "+2348012345678" },
+      { label: "Drop-off", address: "5 Awolowo Road, Ikoyi", name: "Bola Ade", phone: "+2348098765432" },
+    ]);
+  });
+
+  it("omits the Drop-off card when receiver_details is malformed or non-object JSON", () => {
+    expect(addressCards(parcelMalformedReceiver)).toEqual([
+      { label: "Pickup", address: "12 Allen Avenue, Ikeja", name: "Ada Obi", phone: "+2348012345678" },
+    ]);
+    expect(addressCards(parcelNonObjectReceiver)).toEqual([
+      { label: "Pickup", address: "12 Allen Avenue, Ikeja", name: "Ada Obi", phone: "+2348012345678" },
+    ]);
   });
 });
 
