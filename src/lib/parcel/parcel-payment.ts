@@ -113,11 +113,12 @@ export function placeBlocker(a: {
 }
 
 /**
- * What /send does once settleOrder answers. Placement debits the wallet
- * and the wallet endpoint answers 200 for an order already paid, so a
- * wallet "stay" can only be a transport failure after payment. Leaving
- * the form open there would invite a second debit, so the customer goes
- * to the order instead. A cancelled or failed Paystack popup still stays.
+ * What /send and food checkout do once settleOrder answers. Placement
+ * debits the wallet and the wallet endpoint answers 200 for an order
+ * already paid, so a wallet "stay" can only be a transport failure after
+ * payment. Leaving the form open there would invite a second debit, so
+ * the customer goes to the order instead. A cancelled or failed Paystack
+ * popup still stays.
  */
 export function afterSettle(
   method: ParcelPaymentMethod,

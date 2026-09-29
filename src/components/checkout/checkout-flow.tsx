@@ -16,6 +16,7 @@ import { fetchStoreDetail } from "@/lib/api/store-detail";
 import { fetchProfile } from "@/lib/api/auth";
 import { checkZone } from "@/lib/api/zones";
 import { defaultSettleDeps, settleOrder } from "@/lib/checkout/settle-order";
+import { afterSettle } from "@/lib/parcel/parcel-payment";
 import { distanceKm } from "@/lib/geo";
 import { toast } from "@/lib/toast";
 import { fetchConfig } from "@/lib/api/config";
@@ -470,7 +471,7 @@ export function CheckoutFlow() {
       return;
     }
 
-    const outcome = await settleOrder(
+    const settled = await settleOrder(
       {
         orderId: res.orderId,
         amount: res.amount,
@@ -481,6 +482,8 @@ export function CheckoutFlow() {
       },
       defaultSettleDeps,
     );
+    // A wallet order was paid at placement: never back to Place order.
+    const outcome = afterSettle(payment, settled, res.orderId);
 
     if (outcome.kind === "navigate") {
       // Cleared even when the confirm failed, so a retry can't charge the
