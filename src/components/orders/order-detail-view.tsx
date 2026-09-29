@@ -9,6 +9,7 @@ import {
   Clock,
   Loader2,
   MapPin,
+  Package,
   Phone,
   ShoppingBag,
   Wifi,
@@ -44,6 +45,15 @@ import {
   type MilestoneStatus,
   type TimelineRow,
 } from "@/lib/tracking";
+import {
+  addressCards,
+  isParcelOrder,
+  mapPoints,
+  milestoneIndex,
+  milestonesFor,
+  orderHeading,
+  type Milestone,
+} from "@/lib/parcel/parcel-order";
 import { OrderStatusPill } from "./order-status-pill";
 import { RiderMap } from "./rider-map";
 import { cn } from "@/lib/cn";
@@ -65,21 +75,17 @@ const TERMINAL: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
   "returned",
 ]);
 
-/** Ordered list of milestones we light up in the timeline. The
- *  backend's order_status can advance through several of these in
- *  one step (e.g. confirmed → handover), so we walk the array and
- *  mark every one up to AND including the current status. */
-const TIMELINE: Array<{
-  status: OrderStatus | "paid";
-  label: string;
-  icon: React.ReactNode;
-}> = [
-  { status: "pending", label: "Order placed", icon: <ShoppingBag size={14} /> },
-  { status: "confirmed", label: "Confirmed by shop", icon: <Clock size={14} /> },
-  { status: "processing", label: "Being prepared", icon: <Clock size={14} /> },
-  { status: "handover", label: "Out for delivery", icon: <Bike size={14} /> },
-  { status: "delivered", label: "Delivered", icon: <ShoppingBag size={14} /> },
-];
+/** Icons for the timeline milestones. Which milestones show, and their
+ *  labels, come from milestonesFor(): a parcel has no shop steps. The
+ *  backend's order_status can advance through several milestones in
+ *  one step, so the timeline marks every one up to the current status. */
+const MILESTONE_ICONS: Record<MilestoneStatus, React.ReactNode> = {
+  pending: <ShoppingBag size={14} />,
+  confirmed: <Clock size={14} />,
+  processing: <Clock size={14} />,
+  handover: <Bike size={14} />,
+  delivered: <ShoppingBag size={14} />,
+};
 
 /**
  * /orders/[id] view.
@@ -256,22 +262,17 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   const owesPayment = canOfferPayment(payment, order);
 
   // Live rider map shows only while the order is in-flight AND we
-  // have an assigned rider AND a usable delivery lat/lng. The
-  // pickup pin is dropped only when the store has coordinates.
+  // have an assigned rider AND a usable destination. For a parcel the
+  // destination is the drop-off and the second pin is the pickup; for
+  // a shop order they are the delivery address and the store. The
+  // distance line below measures to the same destination.
+  const { destination, pickup } = mapPoints(order);
   const showMap =
     rider !== null &&
     (order.order_status === "handover" ||
       order.order_status === "picked_up" ||
       order.order_status === "accepted") &&
-    parseLatLng(
-      order.delivery_address?.latitude,
-      order.delivery_address?.longitude,
-    ) !== null;
-  const destination = parseLatLng(
-    order.delivery_address?.latitude,
-    order.delivery_address?.longitude,
-  );
-  const pickup = parseLatLng(order.store?.latitude, order.store?.longitude);
+    destination !== null;
   const riderFix = riderFixFromTrack(rider);
   // A stale fix says where the rider was, not where they are. The poll
   // re-renders this every 10s while picked up, which keeps the check current.
@@ -290,7 +291,7 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
                 Order #{order.id}
               </p>
               <h1 className="mt-1 font-serif text-2xl text-ink-900 sm:text-3xl">
-                {order.store?.name ?? "Your order"}
+                {orderHeading(order)}
               </h1>
               <p className="mt-1 text-sm text-ink-500">
                 Placed{" "}
@@ -336,6 +337,7 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
           accounting={accounting}
           charged={payment?.charged ?? false}
           rows={order.timelines ?? []}
+          milestones={milestonesFor(order)}
         />
 
         {showMap && rider && destination && (
@@ -347,13 +349,13 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
           />
         )}
 
-        <ItemsCard lines={lines} />
+        {isParcelOrder(order) ? <ParcelCard order={order} /> : <ItemsCard lines={lines} />}
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
         <TotalsCard order={order} />
         {rider && <RiderCard rider={rider} />}
-        <DeliveryAddressCard order={order} />
+        <AddressCards order={order} />
       </aside>
     </div>
   );
@@ -394,6 +396,7 @@ function Timeline({
   accounting,
   charged,
   rows,
+  milestones,
 }: {
   status: OrderStatus;
   orderId: number;
@@ -403,6 +406,7 @@ function Timeline({
    *  could not confirm it would leave the two contradicting each other. */
   charged: boolean;
   rows: readonly TimelineRow[];
+  milestones: readonly Milestone[];
 }) {
   // If the order is cancelled/refunded etc, render a minimal pill
   // saying so rather than the happy-path timeline.
@@ -466,20 +470,13 @@ function Timeline({
     );
   }
 
-  const currentIndex = TIMELINE.findIndex((m) => m.status === status);
-  // picked_up / accepted aren't in TIMELINE but map to handover for display
-  const effectiveIndex =
-    currentIndex >= 0
-      ? currentIndex
-      : status === "picked_up" || status === "accepted"
-        ? TIMELINE.findIndex((m) => m.status === "handover")
-        : 0;
+  const effectiveIndex = milestoneIndex(milestones, status);
   const subEvents = subEventsByMilestone(rows);
 
   return (
     <CardLite>
       <ol className="space-y-4">
-        {TIMELINE.map((m, idx) => {
+        {milestones.map((m, idx) => {
           const reached = idx <= effectiveIndex;
           const active = idx === effectiveIndex;
           return (
@@ -492,7 +489,7 @@ function Timeline({
                     : "border-ink-200 bg-white text-ink-400",
                 )}
               >
-                {m.icon}
+                {MILESTONE_ICONS[m.status]}
               </span>
               <div className="min-w-0 pt-1">
                 <span
@@ -504,7 +501,7 @@ function Timeline({
                 >
                   {m.label}
                 </span>
-                {(subEvents[m.status as MilestoneStatus] ?? []).map((s) => (
+                {(subEvents[m.status] ?? []).map((s) => (
                   <p key={s.event} className="mt-1 text-xs text-ink-500">
                     {s.label} ·{" "}
                     {new Date(s.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
@@ -618,22 +615,51 @@ function RiderCard({ rider }: { rider: TrackRider }) {
   );
 }
 
-function DeliveryAddressCard({ order }: { order: OrderTrack }) {
-  const addr = order.delivery_address;
-  if (!addr) return null;
+/** One card per address: "Delivery" for a shop order, "Pickup" and
+ *  "Drop-off" for a parcel. Same markup the Delivery card always had. */
+function AddressCards({ order }: { order: OrderTrack }) {
+  return (
+    <>
+      {addressCards(order).map((card) => (
+        <CardLite key={card.label}>
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-medium text-ink-900">
+            <MapPin size={14} />
+            {card.label}
+          </h2>
+          <p className="text-sm text-ink-700">{card.address}</p>
+          {card.name && (
+            <p className="mt-2 text-xs text-ink-500">
+              {card.name}
+              {card.phone ? ` · ${card.phone}` : ""}
+            </p>
+          )}
+        </CardLite>
+      ))}
+    </>
+  );
+}
+
+/** Takes the items card's place on a parcel order, which has no lines. */
+function ParcelCard({ order }: { order: OrderTrack }) {
+  const instruction = order.delivery_instruction?.trim() || null;
   return (
     <CardLite>
-      <h2 className="mb-2 flex items-center gap-2 text-sm font-medium text-ink-900">
-        <MapPin size={14} />
-        Delivery
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-medium text-ink-900">
+        <Package size={14} />
+        Parcel
       </h2>
-      <p className="text-sm text-ink-700">{addr.address}</p>
-      {addr.contact_person_name && (
-        <p className="mt-2 text-xs text-ink-500">
-          {addr.contact_person_name}
-          {addr.contact_person_number ? ` · ${addr.contact_person_number}` : ""}
-        </p>
-      )}
+      <dl className="space-y-2 text-sm">
+        <div className="flex items-start justify-between gap-3">
+          <dt className="text-ink-500">Type</dt>
+          <dd className="text-right font-medium text-ink-900">
+            {order.parcel_category?.name ?? "Parcel"}
+          </dd>
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <dt className="text-ink-500">Instructions</dt>
+          <dd className="text-right text-ink-900">{instruction ?? "None"}</dd>
+        </div>
+      </dl>
     </CardLite>
   );
 }
@@ -653,17 +679,6 @@ function CenterSpinner({ label }: { label: string }) {
       {label}
     </div>
   );
-}
-
-function parseLatLng(
-  lat: string | number | undefined,
-  lng: string | number | undefined,
-): { lat: number; lng: number } | null {
-  const nLat = lat === undefined ? NaN : Number(lat);
-  const nLng = lng === undefined ? NaN : Number(lng);
-  if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return null;
-  if (nLat === 0 && nLng === 0) return null;
-  return { lat: nLat, lng: nLng };
 }
 
 /**
