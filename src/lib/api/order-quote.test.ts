@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseQuote } from "./order-quote";
+import { parcelQuoteUsable, parseQuote } from "./order-quote";
 
 /**
  * get-Tax returns the fee figures across three different nesting
@@ -80,5 +80,46 @@ describe("parseQuote", () => {
     });
     expect(q.deliveryCharge).toBe(0);
     expect(q.freeDeliveryBy).toBe("admin");
+  });
+});
+
+describe("parcelQuoteUsable", () => {
+  it("accepts a preview that carries the parcel fee", () => {
+    const q = parseQuote({
+      order_amount: 1300,
+      delivery_charge: 1000,
+      additional_charge: 100,
+      pricing_breakdown: { normalized_inputs: { dm_tips: 200 } },
+    });
+    expect(parcelQuoteUsable(q)).toBe(true);
+  });
+
+  it("refuses a preview with no fee and no free-delivery reason", () => {
+    // What a backend without the parcel preview fix returns: the fee
+    // is missing from delivery_charge and from the total.
+    const q = parseQuote({
+      order_amount: 300,
+      delivery_charge: 0,
+      additional_charge: 100,
+      pricing_breakdown: { normalized_inputs: { dm_tips: 200 } },
+    });
+    expect(parcelQuoteUsable(q)).toBe(false);
+  });
+
+  it("accepts a fee zeroed by free delivery", () => {
+    const q = parseQuote({
+      order_amount: 300,
+      delivery_charge: 0,
+      additional_charge: 100,
+      pricing_breakdown: {
+        normalized_inputs: { dm_tips: 200 },
+        breakdown: { free_delivery_by: "admin" },
+      },
+    });
+    expect(parcelQuoteUsable(q)).toBe(true);
+  });
+
+  it("refuses an empty body", () => {
+    expect(parcelQuoteUsable(parseQuote({}))).toBe(false);
   });
 });

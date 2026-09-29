@@ -10,6 +10,7 @@ import {
   fetchRunningOrders,
   type OrderSummary,
 } from "@/lib/api/orders";
+import { isParcelOrder, orderListPaymentLabel, orderListTitle } from "@/lib/parcel/parcel-order";
 import { OrderStatusPill } from "./order-status-pill";
 import { cn } from "@/lib/cn";
 
@@ -130,7 +131,10 @@ function Tabs({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
 
 function OrderCard({ order }: { order: OrderSummary }) {
   const logo = order.store?.logo_full_url ?? null;
-  const storeName = order.store?.name ?? "Unknown shop";
+  // A parcel has no store, so its row shows the package icon below and
+  // names the receiver instead.
+  const storeName = orderListTitle(order);
+  const parcel = isParcelOrder(order);
   const placed = new Date(order.created_at);
 
   return (
@@ -167,7 +171,7 @@ function OrderCard({ order }: { order: OrderSummary }) {
               timeStyle: "short",
             })}
           </span>
-          {typeof order.details_count === "number" && (
+          {!parcel && typeof order.details_count === "number" && (
             <>
               <span className="text-ink-300">·</span>
               <span>
@@ -184,7 +188,7 @@ function OrderCard({ order }: { order: OrderSummary }) {
           ₦{Math.round(order.order_amount).toLocaleString()}
         </p>
         <p className="mt-1 text-xs text-ink-500">
-          {order.payment_status === "paid" ? "Paid" : "Pay on delivery"}
+          {orderListPaymentLabel(order)}
         </p>
       </div>
     </Link>

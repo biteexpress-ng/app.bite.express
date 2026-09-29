@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Loader2, ArrowRight } from "lucide-react";
 import { useLocation } from "@/lib/location-store";
 import { fetchModules, type Module } from "@/lib/api/modules";
+import { moduleEntry } from "@/lib/module-entry";
 import { NoLocation } from "./no-location";
 
 type State =
@@ -90,10 +91,10 @@ export function ModulePicker() {
 
 function ModuleCard({ module: m }: { module: Module }) {
   const count = m.stores_count ?? 0;
-  const hasStores = count > 0;
+  const entry = moduleEntry(m);
   return (
     <Link
-      href={`/browse/${m.id}`}
+      href={entry.href}
       className="card-luxe group relative flex flex-col overflow-hidden rounded-3xl"
     >
       <div className="relative aspect-[16/10] w-full overflow-hidden bg-canvas-sunken">
@@ -118,7 +119,7 @@ function ModuleCard({ module: m }: { module: Module }) {
             />
           </div>
         )}
-        {hasStores && (
+        {entry.showCount && (
           <span className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-pill bg-black/55 px-2.5 py-1 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-white backdrop-blur">
             {count} shops
           </span>
@@ -130,7 +131,7 @@ function ModuleCard({ module: m }: { module: Module }) {
             {m.module_name}
           </h3>
           <p className="mt-0.5 text-xs text-ink-500">
-            {hasStores ? `Explore ${count} shops` : "Coming soon"}
+            {entry.subtitle}
           </p>
         </div>
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-ink-200 bg-white text-ink-700 transition-all group-hover:border-brand-red/40 group-hover:bg-brand-red group-hover:text-white">

@@ -7,11 +7,7 @@ import { ArrowRight, Loader2, ShoppingBag } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { useLocation } from "@/lib/location-store";
 import { useAuth } from "@/lib/auth-store";
-import {
-  placeOrder,
-  confirmPaystackPayment,
-  walletPayOrder,
-} from "@/lib/api/orders";
+import { placeOrder } from "@/lib/api/orders";
 import { fetchOrderQuote } from "@/lib/api/order-quote";
 import { sendPriceRequest } from "@/lib/api/price-check";
 import { isPriceRequestCart } from "@/lib/price-check/eligibility";
@@ -19,7 +15,8 @@ import { buildItemNotes } from "@/lib/price-check/item-notes";
 import { fetchStoreDetail } from "@/lib/api/store-detail";
 import { fetchProfile } from "@/lib/api/auth";
 import { checkZone } from "@/lib/api/zones";
-import { payWithPaystack } from "@/lib/paystack";
+import { defaultSettleDeps, settleOrder } from "@/lib/checkout/settle-order";
+import { afterSettle } from "@/lib/parcel/parcel-payment";
 import { distanceKm } from "@/lib/geo";
 import { toast } from "@/lib/toast";
 import { fetchConfig } from "@/lib/api/config";
@@ -460,112 +457,48 @@ export function CheckoutFlow() {
       dmTips: tip,
     });
 
+    if (!res.ok && res.code === "unknown_outcome") {
+      // The order may exist, and a wallet order is already paid, so Place
+      // order stays off: the orders list is the only safe next step. A
+      // wallet cart is cleared so a second placement cannot debit again;
+      // Pay Online and Pay Offline charge nothing at placement, so their
+      // cart is kept in case the order never reached the backend.
+      if (payment === "wallet") clear();
+      toast.warn("We couldn't confirm whether your order was placed. Check your orders before trying again.");
+      router.replace("/orders");
+      return;
+    }
     if (!res.ok) {
       setPhase(phase);
       toast.error(res.message);
       return;
     }
 
-    // Offline payment. The order exists but is NOT real yet: /order/place
-    // created it at order_status='failed' (PlaceNewOrder.php:173-179) and
-    // only the PUT /offline-payment flips it to 'pending'
-    // (OrderController.php:515-516). If the customer never completes that
-    // second call the order is stranded AND invisible, because
-    // Order::scopeFailed hides failed orders that have no offline_payments
-    // row (Order.php:260). So send them straight there and don't stop.
-    if (payment === "offline_payment") {
+    const settled = await settleOrder(
+      {
+        orderId: res.orderId,
+        amount: res.amount,
+        method: payment,
+        successHref: `/checkout/success?order_id=${res.orderId}`,
+        email: address.contactPersonEmail ?? user?.email ?? null,
+        offlineMethodId,
+      },
+      defaultSettleDeps,
+    );
+    // A wallet order was paid at placement: never back to Place order.
+    const outcome = afterSettle(payment, settled, res.orderId);
+
+    if (outcome.kind === "navigate") {
+      // Cleared even when the confirm failed, so a retry can't charge the
+      // customer twice for the same order.
       clear();
-      router.replace(
-        `/checkout/offline/${res.orderId}` +
-          (offlineMethodId ? `?method=${offlineMethodId}` : ""),
-      );
+      if (outcome.error) toast.error(outcome.error);
+      router.replace(outcome.href);
       return;
     }
-
-    // Paystack inline popup path.
-    if (payment === "digital_payment") {
-      const customerEmail =
-        address.contactPersonEmail ?? user?.email ?? null;
-      if (!customerEmail) {
-        setPhase(phase);
-        toast.warn(
-          "We need an email on file to charge a card. Add one on the Edit profile page and try again.",
-        );
-        return;
-      }
-
-      // Paystack requires the amount in kobo. We trust the server's
-      // total_ammount over the locally-computed subtotal so delivery
-      // fees / surcharges / discounts are included.
-      const amountKobo = Math.round(res.amount * 100);
-      const reference = `BE-${res.orderId}-${Date.now().toString(36)}`;
-
-      const pop = await payWithPaystack({
-        email: customerEmail,
-        amountKobo,
-        reference,
-        metadata: { order_id: res.orderId },
-      });
-
-      if (pop.status === "cancelled") {
-        setPhase(phase);
-        toast.warn(
-          `Payment cancelled. Order #${res.orderId} is on hold — re-place it when you're ready.`,
-        );
-        return;
-      }
-      if (pop.status === "error") {
-        setPhase(phase);
-        toast.error(pop.message);
-        return;
-      }
-
-      // The money has been captured by now, so a dropped connection must
-      // not read as a failed payment. Retry the confirm a few times before
-      // giving up; the endpoint is idempotent (already_paid returns 200).
-      let confirmRes = await confirmPaystackPayment(res.orderId, pop.reference);
-      for (let attempt = 1; !confirmRes.ok && attempt < 4; attempt++) {
-        await new Promise((r) => setTimeout(r, attempt * 1500));
-        confirmRes = await confirmPaystackPayment(res.orderId, pop.reference);
-      }
-      if (!confirmRes.ok) {
-        // The cart is cleared so a retry can't charge the customer twice
-        // for the same order.
-        clear();
-        toast.error(
-          `We received your payment but couldn't activate order #${res.orderId} yet. Please don't pay again; contact support with reference ${pop.reference}.`,
-        );
-        router.replace(`/orders/${res.orderId}`);
-        return;
-      }
-
-      clear();
-      router.replace(`/checkout/success?order_id=${res.orderId}`);
-      return;
-    }
-
-    // Pay from wallet balance — immediate deduct.
-    if (payment === "wallet") {
-      const pay = await walletPayOrder(res.orderId);
-      if (pay.ok) {
-        clear();
-        router.replace(`/checkout/success?order_id=${res.orderId}`);
-        return;
-      }
-      setPhase(phase);
-      if (pay.reason === "insufficient") {
-        toast.warn(
-          "Wallet balance is too low. Top up via your DVA on the Wallet page, then re-place the order.",
-        );
-      } else {
-        toast.error(pay.message || "Wallet payment failed.");
-      }
-      return;
-    }
-
-    // Should never reach here — PaymentMethod is fully covered above.
     setPhase(phase);
-    toast.error("Please pick a payment method and try again.");
+    if (outcome.tone === "warn") toast.warn(outcome.message);
+    else toast.error(outcome.message);
   }
 
   const placing = phase.kind === "submitting";
