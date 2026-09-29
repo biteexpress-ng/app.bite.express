@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { parcelOrderBody, type PlaceParcelOrderInput } from "./orders";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { parcelOrderBody, placeParcelOrder, type PlaceParcelOrderInput } from "./orders";
+
+const { api } = vi.hoisted(() => ({ api: vi.fn() }));
+vi.mock("@/lib/api-client", () => ({ api }));
 
 const input: PlaceParcelOrderInput = {
   moduleId: 6,
@@ -99,5 +102,43 @@ describe("parcelOrderBody", () => {
   it("leaves the email out when the sender has none", () => {
     const body = parcelOrderBody({ ...input, sender: { ...input.sender, email: null } });
     expect(body).not.toHaveProperty("contact_person_email");
+  });
+});
+
+describe("placeParcelOrder", () => {
+  beforeEach(() => {
+    api.mockReset();
+  });
+
+  it("waits up to 45 seconds for placement", async () => {
+    api.mockResolvedValue({ ok: true, data: { order_id: 100231, total_ammount: 1300 } });
+    await placeParcelOrder(input);
+    expect(api).toHaveBeenCalledWith(
+      "/api/v1/customer/order/place",
+      expect.objectContaining({ method: "POST", timeoutMs: 45_000 }),
+    );
+  });
+
+  it("reads a timeout or dropped connection as an unknown outcome, since the order may exist", async () => {
+    api.mockResolvedValue({ ok: false, status: 0, message: "signal timed out" });
+    expect(await placeParcelOrder(input)).toEqual({
+      ok: false,
+      code: "unknown_outcome",
+      message: "signal timed out",
+    });
+  });
+
+  it("keeps the backend's own error code on a real refusal", async () => {
+    api.mockResolvedValue({
+      ok: false,
+      status: 403,
+      message: "Out of coverage area",
+      errors: { zone: ["Out of coverage area"] },
+    });
+    expect(await placeParcelOrder(input)).toEqual({
+      ok: false,
+      code: "zone",
+      message: "Out of coverage area",
+    });
   });
 });

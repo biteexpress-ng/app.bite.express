@@ -160,6 +160,12 @@ describe("parcelPlaceErrorMessage", () => {
     );
   });
 
+  it("never shows the raw fetch text when the placement outcome is unknown", () => {
+    expect(parcelPlaceErrorMessage("unknown_outcome", "signal timed out")).toBe(
+      "We couldn't confirm whether your parcel was placed. Check your orders before trying again.",
+    );
+  });
+
   it("falls back to the server message, then to a generic line", () => {
     expect(parcelPlaceErrorMessage(null, "Server said no")).toBe("Server said no");
     expect(parcelPlaceErrorMessage(null, "")).toBe("We couldn't place your parcel. Please try again.");

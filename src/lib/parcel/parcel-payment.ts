@@ -126,5 +126,8 @@ export function parcelPlaceErrorMessage(code: string | null, fallback: string): 
   if (code === "order_amount") {
     return "Your wallet balance is too low for this parcel. Top up on the Wallet page, or pay another way.";
   }
+  if (code === "unknown_outcome") {
+    return "We couldn't confirm whether your parcel was placed. Check your orders before trying again.";
+  }
   return fallback || "We couldn't place your parcel. Please try again.";
 }

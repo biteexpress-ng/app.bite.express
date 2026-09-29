@@ -396,6 +396,13 @@ export function SendParcelFlow() {
 
     setPlacing(true);
     const res = await placeParcelOrder(orderInput);
+    if (!res.ok && res.code === "unknown_outcome") {
+      // The order may exist, and a wallet order is already paid, so Place
+      // order stays off: the orders list is the only safe next step.
+      toast.warn(parcelPlaceErrorMessage(res.code, res.message));
+      router.replace("/orders");
+      return;
+    }
     if (!res.ok) {
       setPlacing(false);
       toast.error(parcelPlaceErrorMessage(res.code, res.message));

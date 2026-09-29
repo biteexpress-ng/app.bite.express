@@ -613,7 +613,9 @@ export function parcelOrderBody(
 export type PlaceParcelOrderResult =
   | { ok: true; orderId: number; amount: number }
   /** `code` is the backend's error code: "zone", "receiverZone", or
-   *  "order_amount" on a 203 refusal (the wallet cannot cover the total). */
+   *  "order_amount" on a 203 refusal (the wallet cannot cover the total).
+   *  "unknown_outcome" means no answer arrived (timeout or dropped
+   *  connection): the order may exist, and a wallet order is already paid. */
   | { ok: false; code: string | null; message: string };
 
 export async function placeParcelOrder(
@@ -626,6 +628,7 @@ export async function placeParcelOrder(
     moduleId: input.moduleId,
     latitude: input.pickup.lat,
     longitude: input.pickup.lng,
+    timeoutMs: 45_000,
   });
 
   if (res.ok) {
@@ -640,6 +643,9 @@ export async function placeParcelOrder(
   }
   if ("skipped" in res) {
     return { ok: false, code: null, message: "Backend not configured." };
+  }
+  if (res.status === 0) {
+    return { ok: false, code: "unknown_outcome", message: res.message };
   }
   const code = res.errors ? (Object.keys(res.errors)[0] ?? null) : null;
   return { ok: false, code, message: res.message };
