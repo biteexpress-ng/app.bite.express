@@ -168,10 +168,10 @@ describe("estimatedQuoteTotal", () => {
 describe("buildAcceptPayload", () => {
   it("sends the unticked detail ids, not item ids", () => {
     const lines = [ql({ detailId: 55301, itemId: 8801 }), ql({ detailId: 55302, itemId: 8815 })];
-    const payload = buildAcceptPayload(90211, lines, new Set([55301]), "cash_on_delivery");
+    const payload = buildAcceptPayload(90211, lines, new Set([55301]), "wallet");
     expect(payload.order_id).toBe(90211);
     expect(payload.excluded_detail_ids).toEqual([55302]);
-    expect(payload.payment_method).toBe("cash_on_delivery");
+    expect(payload.payment_method).toBe("wallet");
   });
 
   it("also excludes lines the store cannot supply", () => {

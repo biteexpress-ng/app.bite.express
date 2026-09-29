@@ -19,7 +19,7 @@ function zone(
   id: number,
   modules: Array<{ id: number; module_type: string }>,
 ): ZoneData {
-  return { id, status: 1, cash_on_delivery: 0, digital_payment: 1, offline_payment: 0, modules };
+  return { id, status: 1, digital_payment: 1, offline_payment: 0, modules };
 }
 
 describe("validateContact", () => {
