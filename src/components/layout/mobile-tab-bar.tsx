@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { Home, Receipt, ShoppingBag, User2 } from "lucide-react";
+import { Home, ShoppingBag, User2 } from "lucide-react";
+import { ReceiptNaira } from "@/components/icons/receipt-naira";
 import { cn } from "@/lib/cn";
 import { useIsAuthenticated } from "@/lib/auth-store";
 import { useLocation } from "@/lib/location-store";
@@ -70,7 +71,7 @@ export function MobileTabBar() {
       key: "orders",
       label: "Orders",
       href: isAuthed ? "/orders" : "/signin?next=%2Forders",
-      icon: Receipt,
+      icon: ReceiptNaira,
       badge:
         isAuthed && runningOrders > 0 ? (
           <DotBadge label="You have a running order" />
