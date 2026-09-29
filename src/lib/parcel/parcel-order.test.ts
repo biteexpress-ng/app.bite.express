@@ -7,6 +7,7 @@ import {
   milestoneIndex,
   milestonesFor,
   orderHeading,
+  orderListPaymentLabel,
   orderListTitle,
   receiverName,
   receiverOf,
@@ -164,6 +165,22 @@ describe("orderListTitle", () => {
   it("keeps the shop name, or the old fallback, for shop orders", () => {
     expect(orderListTitle(food)).toBe("Mama Put");
     expect(orderListTitle(order({ store: null }))).toBe("Unknown shop");
+  });
+});
+
+describe("orderListPaymentLabel", () => {
+  it("never offers payment on delivery: there is no cash on delivery", () => {
+    for (const payment_method of ["wallet", "digital_payment", "offline_payment", null, undefined]) {
+      expect(orderListPaymentLabel(order({ payment_method }))).not.toMatch(/deliver/i);
+    }
+  });
+
+  it("reads paid, transfer being checked, or not paid", () => {
+    expect(orderListPaymentLabel(order({ payment_status: "paid", payment_method: "wallet" }))).toBe("Paid");
+    expect(orderListPaymentLabel(order({ payment_status: "paid", payment_method: "offline_payment" }))).toBe("Paid");
+    expect(orderListPaymentLabel(order({ payment_method: "offline_payment" }))).toBe("Transfer being checked");
+    expect(orderListPaymentLabel(order({ payment_method: "digital_payment" }))).toBe("Not paid");
+    expect(orderListPaymentLabel(order({}))).toBe("Not paid");
   });
 });
 

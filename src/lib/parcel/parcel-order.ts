@@ -72,6 +72,14 @@ export function orderListTitle(
   return o.store?.name ?? "Unknown shop";
 }
 
+/** The payment line on an orders-list row. There is no cash on delivery. */
+export function orderListPaymentLabel(
+  o: Pick<OrderSummary, "payment_status" | "payment_method">,
+): string {
+  if (o.payment_status === "paid") return "Paid";
+  return o.payment_method === "offline_payment" ? "Transfer being checked" : "Not paid";
+}
+
 /** Where the rider map points: the drop-off for a parcel, the customer for a shop order. */
 export function mapPoints(
   o: Pick<OrderSummary, "order_type" | "receiver_details" | "delivery_address" | "store">,

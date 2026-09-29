@@ -10,7 +10,7 @@ import {
   fetchRunningOrders,
   type OrderSummary,
 } from "@/lib/api/orders";
-import { isParcelOrder, orderListTitle } from "@/lib/parcel/parcel-order";
+import { isParcelOrder, orderListPaymentLabel, orderListTitle } from "@/lib/parcel/parcel-order";
 import { OrderStatusPill } from "./order-status-pill";
 import { cn } from "@/lib/cn";
 
@@ -188,7 +188,7 @@ function OrderCard({ order }: { order: OrderSummary }) {
           ₦{Math.round(order.order_amount).toLocaleString()}
         </p>
         <p className="mt-1 text-xs text-ink-500">
-          {order.payment_status === "paid" ? "Paid" : "Pay on delivery"}
+          {orderListPaymentLabel(order)}
         </p>
       </div>
     </Link>
