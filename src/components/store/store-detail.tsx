@@ -10,6 +10,7 @@ import {
   type StoreItem,
 } from "@/lib/api/store-detail";
 import { useLocation } from "@/lib/location-store";
+import { trackPixel } from "@/lib/meta-pixel";
 import { StoreHeader } from "./store-header";
 import { ItemCard } from "./item-card";
 import { NoLocation } from "@/components/browse/no-location";
@@ -73,6 +74,11 @@ export function StoreDetailView({ storeId }: { storeId: number }) {
         kind: "ready",
         store: res.store,
         selectedCategoryId: ALL_TAB_ID,
+      });
+      trackPixel("ViewContent", {
+        content_ids: [String(storeId)],
+        content_name: res.store.name,
+        content_type: "product_group",
       });
     });
   }, [hydrated, storeId, stored?.lat, stored?.lng]);

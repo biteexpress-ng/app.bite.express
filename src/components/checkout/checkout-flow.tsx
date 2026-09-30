@@ -19,6 +19,7 @@ import { defaultSettleDeps, settleOrder } from "@/lib/checkout/settle-order";
 import { recheckPrice } from "@/lib/checkout/price-recheck";
 import { afterSettle } from "@/lib/parcel/parcel-payment";
 import { distanceKm } from "@/lib/geo";
+import { PIXEL_CURRENCY, trackPixel } from "@/lib/meta-pixel";
 import { toast } from "@/lib/toast";
 import { fetchConfig } from "@/lib/api/config";
 import { fetchOfflineMethods } from "@/lib/api/offline-payment";
@@ -135,6 +136,20 @@ export function CheckoutFlow() {
   const [offlineEnabled, setOfflineEnabled] = useState(false);
   const [offlineMethods, setOfflineMethods] = useState<OfflinePaymentMethod[]>([]);
   const [offlineMethodId, setOfflineMethodId] = useState<number | null>(null);
+
+  // One InitiateCheckout per visit, sent when the page first has a
+  // priced cart to report; the ready phase is re-entered after every
+  // failed submit and must not send it again.
+  const checkoutReported = useRef(false);
+  useEffect(() => {
+    if (phase.kind !== "ready" || checkoutReported.current) return;
+    checkoutReported.current = true;
+    trackPixel("InitiateCheckout", {
+      value: subtotal,
+      currency: PIXEL_CURRENCY,
+      num_items: lines.reduce((sum, l) => sum + l.qty, 0),
+    });
+  }, [phase.kind, subtotal, lines]);
 
   // Refresh wallet_balance whenever the page mounts so the
   // PaymentPicker shows the freshest number (the cached AuthUser
@@ -518,7 +533,7 @@ export function CheckoutFlow() {
         orderId: res.orderId,
         amount: res.amount,
         method: payment,
-        successHref: `/checkout/success?order_id=${res.orderId}`,
+        successHref: `/checkout/success?order_id=${res.orderId}&amount=${res.amount}`,
         email: address.contactPersonEmail ?? user?.email ?? null,
         offlineMethodId,
       },

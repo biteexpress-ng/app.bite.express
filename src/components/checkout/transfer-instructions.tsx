@@ -60,7 +60,10 @@ export function TransferInstructions({ orderId }: { orderId: number }) {
     setPay({ kind: "checking" });
     const res = await walletPayOrder(orderId);
     if (res.ok) {
-      router.replace(`/checkout/success?order_id=${orderId}`);
+      router.replace(
+        `/checkout/success?order_id=${orderId}` +
+          (amount !== null && Number.isFinite(amount) ? `&amount=${amount}` : ""),
+      );
       return;
     }
     if (res.reason === "insufficient") {

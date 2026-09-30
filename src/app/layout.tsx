@@ -6,6 +6,7 @@ import { dmSans, dmSerifDisplay } from "@/lib/fonts";
 import { siteConfig } from "@/lib/site-config";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { PushBootstrap } from "@/components/notifications/push-bootstrap";
+import { MetaPixel } from "@/components/analytics/meta-pixel";
 import { AppDownloadBanner } from "@/components/app-nudge/app-download-banner";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -70,6 +71,7 @@ export default async function RootLayout({
         </NextIntlClientProvider>
 
         <Script src={PAYSTACK_SCRIPT_SRC} strategy="afterInteractive" />
+        <MetaPixel />
       </body>
     </html>
   );

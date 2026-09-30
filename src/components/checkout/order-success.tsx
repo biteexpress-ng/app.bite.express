@@ -1,17 +1,58 @@
 "use client";
 
+import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, ArrowRight, Sparkles } from "lucide-react";
 import { AppDownloadSuccessCard } from "@/components/app-nudge/app-download-success-card";
+import { fetchOrderTrack } from "@/lib/api/orders";
+import {
+  claimPurchase,
+  parseAmount,
+  purchaseEventId,
+  PIXEL_CURRENCY,
+  trackPixel,
+} from "@/lib/meta-pixel";
 
 /**
  * Premium post-place confirmation. Pulls the new order id from
  * `?order_id=…`. Cinematic obsidian confetti card, flame CTA.
+ *
+ * Also the one place the ads pixel sees a Purchase. Every route that
+ * lands here appends `&amount=` with the order total; when it is missing
+ * the total is read back from /order/track rather than sent as zero.
  */
 export function OrderSuccess() {
   const search = useSearchParams();
   const orderId = search.get("order_id");
+  const amountParam = search.get("amount");
+
+  useEffect(() => {
+    if (!orderId) return;
+    const storage = typeof window === "undefined" ? null : window.sessionStorage;
+    if (!claimPurchase(orderId, storage)) return;
+
+    const send = (value: number) =>
+      trackPixel(
+        "Purchase",
+        { value, currency: PIXEL_CURRENCY, content_type: "product" },
+        purchaseEventId(orderId),
+      );
+
+    const known = parseAmount(amountParam);
+    if (known !== null) {
+      send(known);
+      return;
+    }
+    let cancelled = false;
+    fetchOrderTrack(Number(orderId)).then((res) => {
+      if (cancelled) return;
+      send(res.ok && Number.isFinite(res.order.order_amount) ? res.order.order_amount : 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, amountParam]);
 
   return (
     <>

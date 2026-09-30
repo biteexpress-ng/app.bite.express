@@ -175,7 +175,11 @@ export function OfflinePaymentForm({ orderId }: { orderId: number }) {
         });
 
     if (res.ok) {
-      router.replace(`/checkout/success?order_id=${orderId}`);
+      const amount = load.kind === "ready" ? load.amount : null;
+      router.replace(
+        `/checkout/success?order_id=${orderId}` +
+          (typeof amount === "number" ? `&amount=${amount}` : ""),
+      );
       return;
     }
 

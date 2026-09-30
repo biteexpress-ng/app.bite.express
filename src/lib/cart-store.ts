@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { cartKeyFor, type VariationSelection } from "@/lib/food-variations";
 import type { AddOnSelection } from "@/lib/api/store-detail";
 import { applyLineNote } from "@/lib/price-check/item-notes";
+import { PIXEL_CURRENCY, trackPixel } from "@/lib/meta-pixel";
 
 /**
  * Customer cart — client-only for v0.
@@ -206,6 +207,15 @@ export const useCart = create<CartState>((set, get) => ({
     const next: Persisted = { storeId: newStoreId, lines: nextLines };
     writePersisted(next);
     set({ ...next, hydrated: true });
+    // Every add path (menu, variation sheet, reorder) lands here, so this
+    // is the one place the ads pixel learns about cart intent.
+    trackPixel("AddToCart", {
+      content_ids: [String(input.itemId)],
+      content_name: input.name,
+      content_type: "product",
+      value: input.unitPrice * qty,
+      currency: PIXEL_CURRENCY,
+    });
     return { ok: true, merged };
   },
 

@@ -7,6 +7,7 @@ import { ArrowRight, Loader2 } from "lucide-react";
 import { register, fetchProfile } from "@/lib/api/auth";
 import { useAuth } from "@/lib/auth-store";
 import { normalizePhone } from "@/lib/phone";
+import { trackPixel } from "@/lib/meta-pixel";
 import { cn } from "@/lib/cn";
 
 /**
@@ -71,6 +72,7 @@ export function SignUpFlow() {
       return;
     }
 
+    trackPixel("CompleteRegistration", { status: true });
     const profile = await fetchProfile();
     signIn(
       res.token,
