@@ -9,6 +9,8 @@ import { useLocation } from "@/lib/location-store";
 import { useAuth } from "@/lib/auth-store";
 import { placeOrder } from "@/lib/api/orders";
 import { fetchOrderQuote } from "@/lib/api/order-quote";
+import { applyCoupon, type AppliedCoupon } from "@/lib/api/coupon";
+import { couponNotice, type CouponNotice } from "@/lib/checkout/coupon-notice";
 import { sendPriceRequest } from "@/lib/api/price-check";
 import { isPriceRequestCart } from "@/lib/price-check/eligibility";
 import { buildItemNotes } from "@/lib/price-check/item-notes";
@@ -29,6 +31,7 @@ import {
 } from "@/lib/offline-payment-rules";
 import { OrderSummary, type QuoteState } from "./order-summary";
 import { PaymentPicker, type PaymentMethod } from "./payment-picker";
+import { CouponField } from "./coupon-field";
 import {
   AddressPickerCheckout,
   type CheckoutAddress,
@@ -129,6 +132,10 @@ export function CheckoutFlow() {
   const [payment, setPayment] = useState<PaymentMethod>("digital_payment");
   const [tip, setTip] = useState(0);
   const [quote, setQuote] = useState<QuoteState>({ kind: "idle" });
+  // A code /coupon/apply accepted. It rides on every get-Tax call and on
+  // the order POST, so the total shown and the amount charged agree.
+  const [coupon, setCoupon] = useState<AppliedCoupon | null>(null);
+  const couponCode = coupon?.code ?? null;
 
   // Offline payment gating. Resolved on mount from three independent
   // sources (see canUseOfflinePayment). Defaults to false so the option
@@ -295,9 +302,17 @@ export function CheckoutFlow() {
         stored,
       ),
       dmTips: tip,
+      couponCode,
     }).then((res) => {
       // A newer address/tip/cart already fired; its answer wins.
       if (seq !== quoteSeq.current) return;
+      // The code stopped applying (another shop, usage limit reached).
+      // Dropping it re-runs this effect and prices the order without it.
+      if (!res.ok && res.couponError) {
+        setCoupon(null);
+        toast.warn(`Coupon removed: ${res.couponError}`);
+        return;
+      }
       setQuote(
         res.ok
           ? { kind: "ready", quote: res.quote }
@@ -318,6 +333,7 @@ export function CheckoutFlow() {
     lines,
     stored?.lat,
     stored?.lng,
+    couponCode,
   ]);
 
   if (!cartHydrated || !locHydrated || !authHydrated || phase.kind === "hydrating") {
@@ -464,18 +480,28 @@ export function CheckoutFlow() {
     // Priced again with the zones and distance placement is about to
     // send. A surge that opened while the customer sat on this page must
     // show up on screen before it is charged.
+    const fresh = await fetchOrderQuote({
+      storeId: cartStoreId!,
+      moduleId: phase.moduleId,
+      zoneIds: eligibleZoneIds,
+      lines,
+      lat: address.lat,
+      lng: address.lng,
+      distance: dist,
+      dmTips: tip,
+      couponCode,
+    });
+    if (!fresh.ok && fresh.couponError) {
+      // Dropping the code reprices the page; the customer sees the new
+      // total before deciding to place without it.
+      setPhase(phase);
+      setCoupon(null);
+      toast.warn(`Coupon removed: ${fresh.couponError} Check your total, then place your order again.`);
+      return;
+    }
     const recheck = recheckPrice(
       quote.kind === "ready" ? quote.quote.total : null,
-      await fetchOrderQuote({
-        storeId: cartStoreId!,
-        moduleId: phase.moduleId,
-        zoneIds: eligibleZoneIds,
-        lines,
-        lat: address.lat,
-        lng: address.lng,
-        distance: dist,
-        dmTips: tip,
-      }),
+      fresh,
     );
     if (recheck.kind !== "place") {
       setPhase(phase);
@@ -509,6 +535,7 @@ export function CheckoutFlow() {
       paymentMethod: payment,
       orderType: "delivery",
       dmTips: tip,
+      couponCode,
     });
 
     if (!res.ok && res.code === "unknown_outcome") {
@@ -555,8 +582,32 @@ export function CheckoutFlow() {
     else toast.error(outcome.message);
   }
 
+  async function handleApplyCoupon(code: string): Promise<string | null> {
+    if (phase.kind !== "ready" || !cartStoreId || !stored) {
+      return "Checkout is still loading. Try again in a moment.";
+    }
+    const res = await applyCoupon({
+      code,
+      storeId: cartStoreId,
+      moduleId: phase.moduleId,
+      zoneIds: stored.zoneCheck?.status === "in-zone" ? stored.zoneCheck.zoneIds : [],
+    });
+    if (!res.ok) return res.message;
+    setCoupon(res.coupon);
+    return null;
+  }
+
   const placing = phase.kind === "submitting";
   const priceCheckEnabled = phase.kind === "ready" && phase.priceCheckEnabled;
+  const shownCouponNotice: CouponNotice = !coupon
+    ? null
+    : quote.kind === "ready"
+      ? couponNotice(coupon, quote.quote)
+      : quote.kind === "idle"
+        ? { tone: "warn", message: "Your new total shows once your delivery address is set." }
+        : quote.kind === "error"
+          ? { tone: "warn", message: "We couldn't update your total just now. It is checked again before you pay." }
+          : null;
   const quoted = quote.kind === "ready" ? quote.quote : null;
   // The figure the customer owes. Falls back to the subtotal only while
   // the quote is in flight, and the UI marks that case with a "+".
@@ -634,6 +685,17 @@ export function CheckoutFlow() {
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+        {/* A price-request order is quoted by the store first, and that
+            flow carries no coupon, so the box would promise nothing. */}
+        {!priceCheckEnabled && (
+          <CouponField
+            applied={coupon}
+            notice={shownCouponNotice}
+            onApply={handleApplyCoupon}
+            onRemove={() => setCoupon(null)}
+            disabled={placing}
+          />
+        )}
         <OrderSummary
           lines={lines}
           subtotal={subtotal}

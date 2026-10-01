@@ -104,7 +104,7 @@ export function AppDownloadBanner() {
           />
         )}
         <p className="min-w-0 flex-1 text-xs leading-snug text-ink-700 sm:text-sm">
-          Get coupons and smoother ordering in the BiteExpress app
+          Get smoother ordering and live updates in the BiteExpress app
         </p>
         <div className="flex shrink-0 items-center gap-2">
           {singleButton ? (

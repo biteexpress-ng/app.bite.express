@@ -45,9 +45,9 @@ export function AppDownloadSuccessCard() {
           <Sparkles size={18} />
         </span>
         <div className="min-w-0">
-          <h2 className="text-sm font-medium text-ink-900">Save on your next order</h2>
+          <h2 className="text-sm font-medium text-ink-900">Order faster next time</h2>
           <p className="mt-1 text-sm text-ink-600">
-            Coupons are only available in the BiteExpress app.
+            Get live order updates and quicker reordering in the BiteExpress app.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             {singleButton ? (

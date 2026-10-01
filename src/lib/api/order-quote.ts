@@ -53,7 +53,9 @@ export type OrderQuote = {
 
 export type OrderQuoteResult =
   | { ok: true; quote: OrderQuote }
-  | { ok: false; message: string };
+  /** `couponError` is set when the coupon_code sent was the reason the
+   *  preview was refused, so checkout can drop the code and reprice. */
+  | { ok: false; message: string; couponError?: string };
 
 export type OrderQuoteInput = {
   storeId: number;
@@ -66,6 +68,9 @@ export type OrderQuoteInput = {
   distance: number;
   orderType?: "delivery" | "take_away";
   dmTips?: number;
+  /** Must match what placeOrder() sends, or the preview and the charge
+   *  disagree on the coupon. */
+  couponCode?: string | null;
 };
 
 type GetTaxResponse = {
@@ -107,6 +112,7 @@ export async function fetchOrderQuote(
       longitude: String(input.lng),
       latitude: String(input.lat),
       dm_tips: input.dmTips ?? 0,
+      ...(input.couponCode ? { coupon_code: input.couponCode } : {}),
     },
     zoneId: input.zoneIds,
     moduleId: input.moduleId,
@@ -116,7 +122,10 @@ export async function fetchOrderQuote(
 
   if (res.ok) return { ok: true, quote: parseQuote(res.data) };
   if ("skipped" in res) return { ok: false, message: "Backend not configured." };
-  return { ok: false, message: res.message };
+  const couponError = input.couponCode ? res.errors?.coupon?.[0] : undefined;
+  return couponError
+    ? { ok: false, message: res.message, couponError }
+    : { ok: false, message: res.message };
 }
 
 /** Exported for tests — the field names here are easy to get wrong and

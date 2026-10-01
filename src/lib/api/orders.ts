@@ -324,6 +324,10 @@ export type PlaceOrderInput = {
 
   /** Optional rider tip. */
   dmTips?: number;
+
+  /** A code already accepted by /coupon/apply. The backend validates it
+   *  again and prices the discount or free delivery itself. */
+  couponCode?: string | null;
 };
 
 type PlaceOrderResponse = {
@@ -404,6 +408,7 @@ export async function placeOrder(
     body.contact_person_number = input.contactPersonNumber;
   if (input.contactPersonEmail)
     body.contact_person_email = input.contactPersonEmail;
+  if (input.couponCode) body.coupon_code = input.couponCode;
 
   const res = await api<PlaceOrderResponse>("/api/v1/customer/order/place", {
     method: "POST",
