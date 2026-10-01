@@ -53,7 +53,7 @@ export function CouponField({ applied, notice, onApply, onRemove, disabled = fal
             <p className="font-mono text-sm font-semibold tracking-wide text-ink-900">
               {applied.code}
             </p>
-            {applied.title && (
+            {applied.title && applied.title.toLowerCase() !== applied.code.toLowerCase() && (
               <p className="line-clamp-1 text-xs text-ink-500">{applied.title}</p>
             )}
           </div>
