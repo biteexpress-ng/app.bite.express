@@ -15,6 +15,7 @@ import {
   MobileTabBarSpacer,
 } from "@/components/layout/mobile-tab-bar";
 import { Toaster } from "@/components/ui/toaster";
+import { ReviewReminder } from "@/components/reviews/review-reminder";
 import { PAYSTACK_SCRIPT_SRC } from "@/lib/paystack";
 import "./globals.css";
 
@@ -66,6 +67,7 @@ export default async function RootLayout({
           <main className="flex-1">{children}</main>
           <MobileTabBar />
           <SiteFooter />
+          <ReviewReminder />
           <Toaster />
           <MobileTabBarSpacer />
         </NextIntlClientProvider>

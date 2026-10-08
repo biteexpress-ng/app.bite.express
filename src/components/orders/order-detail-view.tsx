@@ -12,6 +12,7 @@ import {
   Package,
   Phone,
   ShoppingBag,
+  Star,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -54,6 +55,8 @@ import {
   orderHeading,
   type Milestone,
 } from "@/lib/parcel/parcel-order";
+import { RateOrderSheet } from "@/components/reviews/rate-order-sheet";
+import { isOrderRated } from "@/lib/reviews/review-state";
 import { OrderStatusPill } from "./order-status-pill";
 import { RiderMap } from "./rider-map";
 import { cn } from "@/lib/cn";
@@ -108,6 +111,11 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [reverbConnected, setReverbConnected] = useState(false);
   const payment = usePendingPayment(orderId);
+  const [rated, setRated] = useState(
+    () => typeof window !== "undefined" && isOrderRated(orderId),
+  );
+  const [rateOpen, setRateOpen] = useState(false);
+  const [seenStatus, setSeenStatus] = useState<OrderStatus | null>(null);
 
   // Initial load
   useEffect(() => {
@@ -195,6 +203,15 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   }, [orderId, state, awaitingPayment]);
 
   const liveStatus = state.kind === "ready" ? state.order.order_status : null;
+
+  // Watching an order arrive is the moment to ask for a rating, so the sheet
+  // opens on the live change to delivered. Opening a page that was already
+  // delivered shows the card below instead. Adjusting state during render
+  // (not in an effect) is React's pattern for reacting to a changed value.
+  if (liveStatus !== seenStatus) {
+    if (seenStatus !== null && liveStatus === "delivered" && !rated) setRateOpen(true);
+    setSeenStatus(liveStatus);
+  }
   const hasRider = state.kind === "ready" && trackRider(state.order.delivery_man) !== null;
   const live = liveStatus !== null && (!TERMINAL.has(liveStatus) || awaitingPayment);
   const intervalMs = liveStatus ? pollIntervalMs(liveStatus, hasRider) : 20_000;
@@ -329,6 +346,15 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
           )}
         </header>
 
+        {order.order_status === "delivered" && (
+          <RateOrderCard
+            rated={rated}
+            parcel={isParcelOrder(order)}
+            hasRider={rider !== null}
+            onRate={() => setRateOpen(true)}
+          />
+        )}
+
         <PushOptInCard orderActive={!TERMINAL.has(order.order_status)} />
 
         <Timeline
@@ -357,7 +383,60 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
         {rider && <RiderCard rider={rider} />}
         <AddressCards order={order} />
       </aside>
+
+      <RateOrderSheet
+        orderId={order.id}
+        open={rateOpen}
+        onClose={() => setRateOpen(false)}
+        onRated={() => setRated(true)}
+        initial={{ order, lines }}
+      />
     </div>
+  );
+}
+
+function RateOrderCard({
+  rated,
+  parcel,
+  hasRider,
+  onRate,
+}: {
+  rated: boolean;
+  parcel: boolean;
+  hasRider: boolean;
+  onRate: () => void;
+}) {
+  // A parcel is rated through its rider alone; without one there is
+  // nothing to rate.
+  if (parcel && !hasRider) return null;
+  if (rated) {
+    return (
+      <CardLite>
+        <p className="flex items-center gap-2 text-sm text-ink-700">
+          <Star size={15} className="fill-brand-orange text-brand-orange" />
+          Thanks for rating this order.
+        </p>
+      </CardLite>
+    );
+  }
+  const who = parcel ? "your rider" : hasRider ? "the store and your rider" : "the store";
+  return (
+    <CardLite>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-ink-900">How did it go?</h2>
+          <p className="mt-0.5 text-sm text-ink-600">Rate {who}. It helps them get better.</p>
+        </div>
+        <button
+          type="button"
+          onClick={onRate}
+          className="btn-flame inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-pill px-5 text-sm font-medium text-white"
+        >
+          <Star size={15} className="fill-white" />
+          Rate order
+        </button>
+      </div>
+    </CardLite>
   );
 }
 

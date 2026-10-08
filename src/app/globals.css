@@ -462,8 +462,44 @@
   animation: biteexpress-live-pulse 1.6s ease-out infinite;
 }
 
+/* Floating glass tab bar (phones). Modelled on the iOS 26 tab bar that
+   Instagram ships: a frosted capsule that floats over the page, icons
+   only, with a lighter lens that slides under the active tab. Content
+   scrolls underneath, which is what the blur is for. */
+.glass-tabbar {
+  background: rgba(255, 255, 255, 0.58);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
+  backdrop-filter: blur(22px) saturate(190%);
+  border: 0.5px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 10px 30px -8px rgba(17, 17, 17, 0.18),
+    0 2px 6px -2px rgba(17, 17, 17, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -0.5px 0 rgba(17, 17, 17, 0.06);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-tabbar { background: rgba(255, 255, 255, 0.94); }
+}
+.glass-tabbar-lens {
+  background: rgba(17, 17, 17, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 0 0 0.5px rgba(17, 17, 17, 0.04);
+  transition:
+    transform 420ms var(--ease-spring),
+    opacity 200ms var(--ease-out-quart);
+}
+.glass-tabbar-item:active .glass-tabbar-icon {
+  transform: scale(0.88);
+}
+.glass-tabbar-icon {
+  transition: transform 180ms var(--ease-out-expo);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  .glass-tabbar-lens,
+  .glass-tabbar-icon { transition: none; }
   .toast-enter,
   .fade-up,
   .rise,

@@ -12,8 +12,13 @@ import { useCart, useCartCount } from "@/lib/cart-store";
 import { useRunningOrdersCount } from "@/components/orders/orders-badge";
 import { activeTab, homeHref, showTabBar, type TabBarTab } from "@/lib/tab-bar";
 
-/** Matches the bar's rendered height (h-16) plus the iPhone safe area. */
-const SPACER_HEIGHT = "h-[calc(4rem+env(safe-area-inset-bottom))]";
+/** Gap between the floating bar and the bottom edge. On a notched iPhone
+ *  the bar sits just above the home indicator, as the native one does. */
+const BAR_BOTTOM = "bottom-[max(0.875rem,calc(env(safe-area-inset-bottom)_-_0.375rem))]";
+/** Bar height (h-[3.875rem]) plus its bottom gap plus breathing room, so the
+ *  last content on a page can scroll clear of the bar. */
+const SPACER_HEIGHT =
+  "h-[calc(3.875rem_+_max(0.875rem,calc(env(safe-area-inset-bottom)_-_0.375rem))_+_1rem)]";
 
 type TabConfig = {
   key: TabBarTab;
@@ -24,9 +29,12 @@ type TabConfig = {
 };
 
 /**
- * Fixed bottom nav for phones (md:hidden). Hidden on checkout (which has
- * its own pay bar) and the auth pages. Guests are routed to sign-in with
- * a `next` return param for the tabs that require an account.
+ * Floating glass tab bar for phones (md:hidden), after the iOS 26 bar in
+ * Instagram: a frosted capsule, icons without captions, and a lens that
+ * slides under the active tab. Each link keeps its name as an aria-label.
+ * Hidden on checkout (which has its own pay bar) and the auth pages.
+ * Guests are routed to sign-in with a `next` return param for the tabs
+ * that require an account.
  */
 export function MobileTabBar() {
   const pathname = usePathname();
@@ -85,12 +93,25 @@ export function MobileTabBar() {
     },
   ];
 
+  const activeIndex = tabs.findIndex((tab) => tab.key === active);
+
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden"
+      className={cn("fixed inset-x-0 z-40 flex justify-center px-4 md:hidden", BAR_BOTTOM)}
     >
-      <div className="mx-auto flex h-16 max-w-md items-stretch justify-around">
+      <div className="glass-tabbar relative flex h-[3.875rem] w-full max-w-[23rem] items-stretch rounded-full p-1.5">
+        {/* The lens is one element that moves, so switching tabs reads as
+            the highlight sliding across rather than two states swapping. */}
+        <span
+          aria-hidden="true"
+          className="glass-tabbar-lens pointer-events-none absolute inset-y-1.5 left-1.5 rounded-full"
+          style={{
+            width: `calc((100% - 0.75rem) / ${tabs.length})`,
+            transform: `translateX(${Math.max(activeIndex, 0) * 100}%)`,
+            opacity: activeIndex < 0 ? 0 : 1,
+          }}
+        />
         {tabs.map((tab) => {
           const isActive = tab.key === active;
           const Icon = tab.icon;
@@ -98,17 +119,19 @@ export function MobileTabBar() {
             <Link
               key={tab.key}
               href={tab.href}
+              aria-label={tab.label}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex flex-1 flex-col items-center justify-center gap-1 text-[0.65rem] font-medium transition-colors",
-                isActive ? "text-brand-red" : "text-ink-500",
+                "glass-tabbar-item relative z-10 flex flex-1 items-center justify-center rounded-full outline-none",
+                "focus-visible:ring-2 focus-visible:ring-brand-red/60",
+                "[-webkit-tap-highlight-color:transparent]",
+                isActive ? "text-ink-900" : "text-ink-700",
               )}
             >
-              <span className="relative inline-flex">
-                <Icon size={22} strokeWidth={isActive ? 2.2 : 1.8} />
+              <span className="glass-tabbar-icon relative inline-flex">
+                <Icon size={25} strokeWidth={isActive ? 2.4 : 1.7} />
                 {tab.badge}
               </span>
-              {tab.label}
             </Link>
           );
         })}
@@ -137,7 +160,7 @@ function CountBadge({ count, label }: { count: number; label: string }) {
 
 function DotBadge({ label }: { label: string }) {
   return (
-    <span className="pointer-events-none absolute -right-0.5 -top-0.5 inline-flex h-2.5 w-2.5 rounded-full bg-brand-red ring-2 ring-white">
+    <span className="pointer-events-none absolute -right-0.5 -top-0.5 inline-flex h-2.5 w-2.5 rounded-full bg-brand-red ring-2 ring-white/90">
       <span className="sr-only">{label}</span>
     </span>
   );
