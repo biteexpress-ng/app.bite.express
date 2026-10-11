@@ -5,6 +5,8 @@ import { Star, Clock, MapPin, Truck, BadgeAlert } from "lucide-react";
 import type { StoreDetail } from "@/lib/api/store-detail";
 import { HeartButton } from "@/components/wishlist/heart-button";
 import { formatDistance } from "@/lib/geo";
+import { isTemporarilyClosed, opensLabel } from "@/lib/store-hours";
+import { useMinuteClock } from "@/lib/use-minute-clock";
 
 /**
  * Premium store header: cinematic cover with gradient scrim,
@@ -19,12 +21,15 @@ export function StoreHeader({
    *  in which case the API's distance is measured from a null point. */
   showDistance: boolean;
 }) {
-  const isOpen = store.open !== 0;
+  const tempClosed = isTemporarilyClosed(store);
+  const isOpen = store.open !== 0 && !tempClosed;
   const cover = store.cover_photo_full_url ?? null;
   const logo = store.logo_full_url ?? null;
   const rating =
     typeof store.avg_rating === "number" ? store.avg_rating : null;
   const distance = showDistance ? formatDistance(store.distance) : null;
+  const now = useMinuteClock();
+  const opens = !isOpen && now ? opensLabel(store, now) : null;
 
   return (
     <header className="fade-up">
@@ -48,9 +53,17 @@ export function StoreHeader({
           }}
         />
         {!isOpen && (
-          <span className="absolute right-4 top-4 rounded-pill bg-black/70 px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur">
-            Closed right now
-          </span>
+          <div className="absolute right-4 top-4 flex flex-col items-end gap-1.5">
+            <span className="rounded-pill bg-black/70 px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur">
+              {tempClosed ? "Closed temporarily" : "Closed right now"}
+            </span>
+            {opens && (
+              <span className="inline-flex items-center gap-1.5 rounded-pill bg-white/95 px-3 py-1.5 text-xs font-semibold text-ink-900 shadow-card backdrop-blur">
+                <Clock size={13} className="text-brand-red" />
+                {opens}
+              </span>
+            )}
+          </div>
         )}
       </div>
 

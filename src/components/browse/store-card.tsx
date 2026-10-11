@@ -7,6 +7,8 @@ import type { Store } from "@/lib/api/stores";
 import { HeartButton } from "@/components/wishlist/heart-button";
 import { cn } from "@/lib/cn";
 import { formatDistance } from "@/lib/geo";
+import { isTemporarilyClosed, opensLabel } from "@/lib/store-hours";
+import { useMinuteClock } from "@/lib/use-minute-clock";
 
 /**
  * Premium visual card for a store on the browse list.
@@ -23,12 +25,15 @@ export function StoreCard({
   store: Store;
   showDistance?: boolean;
 }) {
-  const isOpen = store.open !== 0;
+  const tempClosed = isTemporarilyClosed(store);
+  const isOpen = store.open !== 0 && !tempClosed;
   const rating = typeof store.avg_rating === "number" ? store.avg_rating : null;
   const cover = store.cover_photo_full_url ?? null;
   const logo = store.logo_full_url ?? null;
   const discount = store.discount?.discount ?? 0;
   const distance = showDistance ? formatDistance(store.distance) : null;
+  const now = useMinuteClock();
+  const opens = !isOpen && now ? opensLabel(store, now) : null;
 
   return (
     <Link
@@ -70,9 +75,17 @@ export function StoreCard({
           </span>
         )}
         {!isOpen && (
-          <span className="absolute bottom-3 left-3 rounded-pill bg-black/70 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur">
-            Closed
-          </span>
+          <div className="absolute bottom-3 left-3 flex flex-col items-start gap-1">
+            <span className="rounded-pill bg-black/70 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur">
+              {tempClosed ? "Closed temporarily" : "Closed"}
+            </span>
+            {opens && (
+              <span className="inline-flex items-center gap-1 rounded-pill bg-white/95 px-2.5 py-1 text-[0.7rem] font-semibold text-ink-900 shadow-card backdrop-blur">
+                <Clock size={12} className="text-brand-red" />
+                {opens}
+              </span>
+            )}
+          </div>
         )}
         <HeartButton
           kind="store"

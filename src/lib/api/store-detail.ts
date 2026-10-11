@@ -47,6 +47,7 @@ export type StoreCategory = {
 export type StoreSchedule = {
   id: number;
   store_id: number;
+  /** 0 = Sunday, matching PHP's date('w'). */
   day: number;
   opening_time: string;
   closing_time: string;
@@ -67,7 +68,7 @@ export type StoreDetail = {
   delivery_time?: string | null;
   free_delivery?: boolean;
   open?: 0 | 1;
-  active?: 0 | 1;
+  active?: boolean | 0 | 1;
   distance?: number;
   minimum_order?: number;
   /** The server has already combined the master, module and per-store

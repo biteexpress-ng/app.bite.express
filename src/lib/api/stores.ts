@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@/lib/api-client";
+import type { StoreSchedule } from "@/lib/api/store-detail";
 
 /**
  * GET /api/v1/stores/get-stores/{filter_data}
@@ -42,9 +43,13 @@ export type Store = {
   free_delivery?: boolean;
   discount?: { discount?: number; discount_type?: string } | null;
   open?: 0 | 1;
-  active?: 0 | 1;
+  /** Serialised as a boolean. False means the vendor switched the store
+   *  off by hand, independent of its schedule. */
+  active?: boolean | 0 | 1;
   distance?: number;
   module_id?: number;
+  /** Weekly opening hours, used to say when a closed store reopens. */
+  schedules?: StoreSchedule[];
 };
 
 export type StoreList = {
